@@ -6,4 +6,5 @@
 /node_modules/
 /.eslintcache
 debug.log
+.worktrees/
 .ace-tool/
