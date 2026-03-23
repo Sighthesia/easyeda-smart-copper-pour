@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="zh-Hans">
+	<head>
+		<title>Smart Copper Pour</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<style>
+			:root {
+				color-scheme: light;
+				font-family: "Segoe UI", sans-serif;
+				line-height: 1.4;
+			}
+
+			body {
+				margin: 0;
+				padding: 16px;
+				background: #f7f8fa;
+				color: #1f2937;
+			}
+
+			form,
+			section {
+				background: #ffffff;
+				border: 1px solid #d8dee8;
+				border-radius: 8px;
+				padding: 12px;
+				margin-bottom: 12px;
+			}
+
+			h1 {
+				font-size: 18px;
+				margin: 0 0 12px;
+			}
+
+			.grid {
+				display: grid;
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+				gap: 12px;
+			}
+
+			label {
+				display: block;
+				font-size: 12px;
+				font-weight: 600;
+				margin-bottom: 4px;
+			}
+
+			input,
+			select,
+			button {
+				box-sizing: border-box;
+				width: 100%;
+				padding: 8px 10px;
+				border-radius: 6px;
+				border: 1px solid #c5cfdb;
+				font: inherit;
+				background: #ffffff;
+			}
+
+			button {
+				cursor: pointer;
+				font-weight: 600;
+			}
+
+			[data-daisy-only][hidden] {
+				display: none;
+			}
+
+			.actions {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 8px;
+				margin-top: 12px;
+			}
+
+			.status {
+				min-height: 44px;
+				font-size: 13px;
+				padding: 10px;
+				border-radius: 6px;
+				background: #eef2f7;
+			}
+
+			.status[data-tone="error"] {
+				background: #fdecec;
+				color: #a12626;
+			}
+
+			.status[data-tone="success"] {
+				background: #e8f7ea;
+				color: #216e39;
+			}
+
+			.summary {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 8px;
+				font-size: 13px;
+			}
+
+			.summary strong {
+				display: block;
+				font-size: 11px;
+				color: #526071;
+				margin-bottom: 2px;
+			}
+
+			@media (max-width: 520px) {
+				.grid,
+				.summary,
+				.actions {
+					grid-template-columns: 1fr;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<section>
+			<h1>Smart Copper Pour</h1>
+			<div class="summary">
+				<div><strong>Net</strong><span id="selection-net">Loading...</span></div>
+				<div><strong>Layer</strong><span id="selection-layer">Loading...</span></div>
+				<div><strong>Pads</strong><span id="selection-pad-count">0</span></div>
+			</div>
+		</section>
+
+		<form id="smart-copper-pour-form">
+			<div class="grid">
+				<div>
+					<label for="topology-mode">Topology mode</label>
+					<select id="topology-mode" name="topologyMode">
+						<option value="tree">Tree</option>
+						<option value="star">Star</option>
+						<option value="daisyChain">Daisy Chain</option>
+					</select>
+				</div>
+				<div>
+					<label for="corner-style">Corner style</label>
+					<select id="corner-style" name="cornerStyle">
+						<option value="round">Round</option>
+						<option value="miter">Miter</option>
+						<option value="bevel">Bevel</option>
+					</select>
+				</div>
+				<div>
+					<label for="trunk-bias">Trunk bias</label>
+					<select id="trunk-bias" name="trunkBias">
+						<option value="neutral">Neutral</option>
+						<option value="horizontal">Horizontal</option>
+						<option value="vertical">Vertical</option>
+					</select>
+				</div>
+				<div>
+					<label for="width">Width</label>
+					<input id="width" name="width" type="number" min="0.01" step="0.1" value="1" />
+				</div>
+				<div>
+					<label for="keepout-margin">Keepout margin</label>
+					<input id="keepout-margin" name="keepoutMargin" type="number" min="0" step="0.1" value="0" />
+				</div>
+				<div data-daisy-only hidden>
+					<label for="trunk-start-x">Trunk start X</label>
+					<input id="trunk-start-x" name="trunkStartX" type="number" step="0.1" value="0" />
+				</div>
+				<div data-daisy-only hidden>
+					<label for="trunk-start-y">Trunk start Y</label>
+					<input id="trunk-start-y" name="trunkStartY" type="number" step="0.1" value="0" />
+				</div>
+				<div data-daisy-only hidden>
+					<label for="trunk-end-x">Trunk end X</label>
+					<input id="trunk-end-x" name="trunkEndX" type="number" step="0.1" value="10" />
+				</div>
+				<div data-daisy-only hidden>
+					<label for="trunk-end-y">Trunk end Y</label>
+					<input id="trunk-end-y" name="trunkEndY" type="number" step="0.1" value="0" />
+				</div>
+			</div>
+			<div class="actions">
+				<button type="button" id="preview-button">Preview</button>
+				<button type="button" id="apply-button">Apply</button>
+				<button type="button" id="clear-button">Clear</button>
+			</div>
+		</form>
+
+		<section>
+			<div class="status" id="status-panel" data-tone="neutral">Waiting for selection summary.</div>
+		</section>
+
+		<script>
+			(() => {
+				const REQUEST_TOPIC = 'smart-copper-pour/request';
+				const RESPONSE_TOPIC = 'smart-copper-pour/response';
+				const messageBus = window.parent?.eda?.sys_MessageBus ?? window.eda?.sys_MessageBus;
+				const form = document.getElementById('smart-copper-pour-form');
+				const previewButton = document.getElementById('preview-button');
+				const applyButton = document.getElementById('apply-button');
+				const clearButton = document.getElementById('clear-button');
+				const statusPanel = document.getElementById('status-panel');
+				const selectionNet = document.getElementById('selection-net');
+				const selectionLayer = document.getElementById('selection-layer');
+				const selectionPadCount = document.getElementById('selection-pad-count');
+				const daisyOnlyFields = document.querySelectorAll('[data-daisy-only]');
+
+				const setStatus = (message, tone = 'neutral') => {
+					statusPanel.textContent = message;
+					statusPanel.dataset.tone = tone;
+				};
+
+				const updateSelectionSummary = (payload) => {
+					selectionNet.textContent = payload.netName ?? 'Unknown';
+					selectionLayer.textContent = payload.layerName ?? 'Unknown';
+					selectionPadCount.textContent = String(payload.padCount);
+				};
+
+				const readFormRequest = () => {
+					const request = {
+						topologyMode: form.topologyMode.value,
+						cornerStyle: form.cornerStyle.value,
+						trunkBias: form.trunkBias.value,
+						width: Number(form.width.value),
+						keepoutMargin: Number(form.keepoutMargin.value),
+					};
+
+					if (request.topologyMode === 'daisyChain') {
+						request.trunkStart = {
+							x: Number(form.trunkStartX.value),
+							y: Number(form.trunkStartY.value),
+						};
+						request.trunkEnd = {
+							x: Number(form.trunkEndX.value),
+							y: Number(form.trunkEndY.value),
+						};
+
+						if (
+							!Number.isFinite(request.trunkStart.x) ||
+							!Number.isFinite(request.trunkStart.y) ||
+							!Number.isFinite(request.trunkEnd.x) ||
+							!Number.isFinite(request.trunkEnd.y)
+						) {
+							setStatus('Daisy Chain mode requires valid trunk coordinates.', 'error');
+							return null;
+						}
+					}
+
+					if (!Number.isFinite(request.width) || request.width <= 0) {
+						setStatus('Width must be greater than 0.', 'error');
+						return null;
+					}
+
+					if (!Number.isFinite(request.keepoutMargin) || request.keepoutMargin < 0) {
+						setStatus('Keepout margin must be 0 or greater.', 'error');
+						return null;
+					}
+
+					return request;
+				};
+
+				const publishRequest = (message) => {
+					if (!messageBus) {
+						setStatus('LCEDA message bus is unavailable in this iframe.', 'error');
+						return;
+					}
+
+					messageBus.publish(REQUEST_TOPIC, message);
+				};
+
+				const syncModeVisibility = () => {
+					const isDaisyChainMode = form.topologyMode.value === 'daisyChain';
+					daisyOnlyFields.forEach((element) => {
+						element.hidden = !isDaisyChainMode;
+					});
+				};
+
+				const handlePreview = () => {
+					const payload = readFormRequest();
+					if (!payload) {
+						return;
+					}
+
+					setStatus('Building preview...', 'neutral');
+					publishRequest({ command: 'preview', payload });
+				};
+
+				const handleApply = () => {
+					const payload = readFormRequest();
+					if (!payload) {
+						return;
+					}
+
+					setStatus('Applying copper pour...', 'neutral');
+					publishRequest({ command: 'apply', payload });
+				};
+
+				const handleClear = () => {
+					setStatus('Clearing preview...', 'neutral');
+					publishRequest({ command: 'clearPreview' });
+				};
+
+				const responseTask = messageBus?.subscribe(RESPONSE_TOPIC, (message) => {
+					if (!message || typeof message !== 'object' || !('command' in message) || !('ok' in message)) {
+						return;
+					}
+
+					if (message.ok === false) {
+						setStatus(message.error?.message ?? 'Smart Copper Pour failed.', 'error');
+						return;
+					}
+
+						switch (message.command) {
+							case 'inspectSelection':
+								updateSelectionSummary(message.payload);
+								setStatus('Selection ready. Adjust parameters and preview.', 'success');
+								break;
+							case 'preview':
+								setStatus('Preview updated successfully.', 'success');
+								break;
+							case 'apply':
+								setStatus(message.payload.applied ? 'Copper pour applied successfully.' : 'No copper pour was generated.', 'success');
+								break;
+							case 'clearPreview':
+								setStatus('Preview cleared.', 'success');
+								break;
+						default:
+							setStatus('Received an unknown Smart Copper Pour response.', 'error');
+					}
+				});
+
+				previewButton.addEventListener('click', handlePreview);
+				applyButton.addEventListener('click', handleApply);
+				clearButton.addEventListener('click', handleClear);
+				form.topologyMode.addEventListener('change', syncModeVisibility);
+				window.addEventListener('beforeunload', () => {
+					responseTask?.cancel?.();
+				});
+
+				syncModeVisibility();
+				publishRequest({ command: 'inspectSelection' });
+			})();
+		</script>
+	</body>
+</html>

@@ -1,0 +1,68 @@
+import type { SmartCopperPourPreviewRequest } from '../../application/smart-copper-pour-contract';
+import type { SkeletonPolygon, SkeletonSegment } from '../../domain/skeleton-types';
+import { planDaisyChainBackbone } from '../../domain/daisy-chain-planner';
+import { planStarBackbone } from '../../domain/star-backbone-planner';
+import { planTreeBackbone } from '../../domain/tree-backbone-planner';
+import { buildSkeletonOffsetPolygons } from '../geometry/polygon-offset-builder';
+
+import { createLcedaSelectedPrimitivesReader, type LcedaSelectedPrimitivesReader } from './selection-inspector';
+import { resolveSelectedPadNodes } from './selection-resolver';
+
+/**
+ * Writer-ready copper plan built from the current LCEDA selection.
+ *
+ * @public
+ */
+export interface RuntimeCopperWriterInput {
+	layerName: string;
+	netName: string;
+	polygons: readonly SkeletonPolygon[];
+}
+
+/**
+ * Builds runtime copper writer input from LCEDA selection and request data.
+ *
+ * @public
+ */
+export interface RuntimeCopperPlanBuilder {
+	buildWriterInput(request: SmartCopperPourPreviewRequest): Promise<RuntimeCopperWriterInput>;
+}
+
+export const createRuntimeCopperPlanBuilder = (
+	reader: LcedaSelectedPrimitivesReader = createLcedaSelectedPrimitivesReader(),
+): RuntimeCopperPlanBuilder => ({
+	buildWriterInput: async (request: SmartCopperPourPreviewRequest): Promise<RuntimeCopperWriterInput> => {
+		const padNodes = resolveSelectedPadNodes(await reader.readSelectedPrimitives());
+		const segments = resolveSkeletonSegments(padNodes, request);
+		const polygons = buildSkeletonOffsetPolygons({
+			segments,
+			width: request.width,
+			cornerStyle: request.cornerStyle,
+		});
+
+		return {
+			layerName: padNodes[0].layer,
+			netName: padNodes[0].net,
+			polygons,
+		};
+	},
+});
+
+const resolveSkeletonSegments = (
+	padNodes: ReturnType<typeof resolveSelectedPadNodes>,
+	request: SmartCopperPourPreviewRequest,
+): ReadonlyArray<SkeletonSegment> => {
+	switch (request.topologyMode) {
+		case 'tree':
+			return planTreeBackbone(padNodes, { trunkBias: request.trunkBias }).segments;
+		case 'star':
+			return planStarBackbone(padNodes).segments;
+		case 'daisyChain':
+			return planDaisyChainBackbone(padNodes, {
+				trunkStart: request.trunkStart,
+				trunkEnd: request.trunkEnd,
+			}).segments;
+		default:
+			throw new Error(`Unsupported topology mode: ${(request as { topologyMode: string }).topologyMode}`);
+	}
+};
