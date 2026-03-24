@@ -12,10 +12,19 @@
 			}
 
 			body {
+				display: flex;
+				flex-direction: column;
+				height: 100vh;
 				margin: 0;
 				padding: 16px;
 				background: #f7f8fa;
 				color: #1f2937;
+			}
+
+			.main {
+				flex: 1 1 auto;
+				overflow: auto;
+				padding-bottom: 140px;
 			}
 
 			form,
@@ -67,10 +76,15 @@
 			}
 
 			.actions {
-				display: grid;
-				grid-template-columns: repeat(3, minmax(0, 1fr));
+				display: flex;
+				flex-wrap: nowrap;
 				gap: 8px;
 				margin-top: 12px;
+			}
+
+			.actions button {
+				flex: 1 1 0;
+				width: auto;
 			}
 
 			.status {
@@ -84,6 +98,23 @@
 			.status[data-tone='error'] {
 				background: #fdecec;
 				color: #a12626;
+			}
+
+			.footer {
+				position: fixed;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				background: #ffffff;
+				padding: 12px 16px 16px;
+				border-top: 1px solid #d8dee8;
+				box-shadow: 0 -1px 10px rgba(0, 0, 0, 0.04);
+				z-index: 100;
+			}
+
+			.footer .status {
+				position: relative;
+				margin-bottom: 10px;
 			}
 
 			.status[data-tone='success'] {
@@ -104,87 +135,81 @@
 				color: #526071;
 				margin-bottom: 2px;
 			}
-
-			@media (max-width: 520px) {
-				.grid,
-				.summary,
-				.actions {
-					grid-template-columns: 1fr;
-				}
-			}
 		</style>
 	</head>
 	<body>
-		<section>
-			<h1>智能铜皮生成</h1>
-			<div class="summary">
-				<div><strong>网络</strong><span id="selection-net">加载中...</span></div>
-				<div><strong>层</strong><span id="selection-layer">加载中...</span></div>
-				<div><strong>焊盘</strong><span id="selection-pad-count">0</span></div>
-			</div>
-		</section>
+		<div class="main">
+			<section>
+				<h1>智能铜皮生成</h1>
+				<div class="summary">
+					<div><strong>网络</strong><span id="selection-net">加载中...</span></div>
+					<div><strong>层</strong><span id="selection-layer">加载中...</span></div>
+					<div><strong>焊盘</strong><span id="selection-pad-count">0</span></div>
+				</div>
+			</section>
 
-		<form id="smart-copper-pour-form">
-			<div class="grid">
-				<div>
-					<label for="topology-mode">拓扑模式</label>
-					<select id="topology-mode" name="topologyMode">
-						<option value="tree">树形</option>
-						<option value="star">星形</option>
-						<option value="daisyChain">菊链</option>
-					</select>
+			<form id="smart-copper-pour-form">
+				<div class="grid">
+					<div>
+						<label for="topology-mode">拓扑模式</label>
+						<select id="topology-mode" name="topologyMode">
+							<option value="tree">树形</option>
+							<option value="star">星形</option>
+							<option value="daisyChain">菊链</option>
+						</select>
+					</div>
+					<div>
+						<label for="corner-style">拐角样式</label>
+						<select id="corner-style" name="cornerStyle">
+							<option value="round">圆角</option>
+							<option value="miter">斜接</option>
+							<option value="bevel">斜切</option>
+						</select>
+					</div>
+					<div>
+						<label for="trunk-bias">主干偏置</label>
+						<select id="trunk-bias" name="trunkBias">
+							<option value="neutral">中性</option>
+							<option value="horizontal">水平</option>
+							<option value="vertical">垂直</option>
+						</select>
+					</div>
+					<div>
+						<label for="width">宽度</label>
+						<input id="width" name="width" type="number" min="0.01" step="0.1" value="1" />
+					</div>
+					<div>
+						<label for="keepout-margin">避让边距</label>
+						<input id="keepout-margin" name="keepoutMargin" type="number" min="0" step="0.1" value="0" />
+					</div>
+					<div data-daisy-only hidden>
+						<label for="trunk-start-x">主干起点 X</label>
+						<input id="trunk-start-x" name="trunkStartX" type="number" step="0.1" value="0" />
+					</div>
+					<div data-daisy-only hidden>
+						<label for="trunk-start-y">主干起点 Y</label>
+						<input id="trunk-start-y" name="trunkStartY" type="number" step="0.1" value="0" />
+					</div>
+					<div data-daisy-only hidden>
+						<label for="trunk-end-x">主干终点 X</label>
+						<input id="trunk-end-x" name="trunkEndX" type="number" step="0.1" value="10" />
+					</div>
+					<div data-daisy-only hidden>
+						<label for="trunk-end-y">主干终点 Y</label>
+						<input id="trunk-end-y" name="trunkEndY" type="number" step="0.1" value="0" />
+					</div>
 				</div>
-				<div>
-					<label for="corner-style">拐角样式</label>
-					<select id="corner-style" name="cornerStyle">
-						<option value="round">圆角</option>
-						<option value="miter">斜接</option>
-						<option value="bevel">斜切</option>
-					</select>
-				</div>
-				<div>
-					<label for="trunk-bias">主干偏置</label>
-					<select id="trunk-bias" name="trunkBias">
-						<option value="neutral">中性</option>
-						<option value="horizontal">水平</option>
-						<option value="vertical">垂直</option>
-					</select>
-				</div>
-				<div>
-					<label for="width">宽度</label>
-					<input id="width" name="width" type="number" min="0.01" step="0.1" value="1" />
-				</div>
-				<div>
-					<label for="keepout-margin">避让边距</label>
-					<input id="keepout-margin" name="keepoutMargin" type="number" min="0" step="0.1" value="0" />
-				</div>
-				<div data-daisy-only hidden>
-					<label for="trunk-start-x">主干起点 X</label>
-					<input id="trunk-start-x" name="trunkStartX" type="number" step="0.1" value="0" />
-				</div>
-				<div data-daisy-only hidden>
-					<label for="trunk-start-y">主干起点 Y</label>
-					<input id="trunk-start-y" name="trunkStartY" type="number" step="0.1" value="0" />
-				</div>
-				<div data-daisy-only hidden>
-					<label for="trunk-end-x">主干终点 X</label>
-					<input id="trunk-end-x" name="trunkEndX" type="number" step="0.1" value="10" />
-				</div>
-				<div data-daisy-only hidden>
-					<label for="trunk-end-y">主干终点 Y</label>
-					<input id="trunk-end-y" name="trunkEndY" type="number" step="0.1" value="0" />
-				</div>
-			</div>
+			</form>
+		</div>
+
+		<div class="footer">
+			<div class="status" id="status-panel" data-tone="neutral">等待选择摘要。</div>
 			<div class="actions">
 				<button type="button" id="preview-button">预览</button>
 				<button type="button" id="apply-button">应用</button>
-				<button type="button" id="clear-button">清除</button>
+				<button type="button" id="clear-button">清除预览</button>
 			</div>
-		</form>
-
-		<section>
-			<div class="status" id="status-panel" data-tone="neutral">等待选择摘要。</div>
-		</section>
+		</div>
 
 		<script>
 			(() => {
@@ -200,10 +225,26 @@
 				const selectionLayer = document.getElementById('selection-layer');
 				const selectionPadCount = document.getElementById('selection-pad-count');
 				const daisyOnlyFields = document.querySelectorAll('[data-daisy-only]');
+				let statusHideTimer = null;
+
+				const hideStatus = () => {
+					statusPanel.hidden = true;
+					statusPanel.textContent = '';
+				};
 
 				const setStatus = (message, tone = 'neutral') => {
+					if (statusHideTimer !== null) {
+						window.clearTimeout(statusHideTimer);
+						statusHideTimer = null;
+					}
+
+					statusPanel.hidden = false;
 					statusPanel.textContent = message;
 					statusPanel.dataset.tone = tone;
+					statusHideTimer = window.setTimeout(() => {
+						hideStatus();
+						statusHideTimer = null;
+					}, 3000);
 				};
 
 				const updateSelectionSummary = (payload) => {
@@ -334,6 +375,7 @@
 				});
 
 				syncModeVisibility();
+				setStatus('等待选择摘要。');
 				publishRequest({ command: 'inspectSelection' });
 			})();
 		</script>
