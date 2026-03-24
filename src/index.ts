@@ -14,17 +14,14 @@ import * as extensionConfig from '../extension.json';
 import { SMART_COPPER_POUR_IFRAME_ID } from './application/smart-copper-pour-contract';
 import {
 	SmartCopperPourController,
-	createSmartCopperPourControllerDependencies,
 	type SmartCopperPourControllerDependencies,
+	createSmartCopperPourControllerDependencies,
 } from './application/smart-copper-pour-controller';
-import {
-	createLcedaSelectedPrimitivesReader,
-	createSmartCopperPourSelectionInspector,
-} from './infrastructure/lceda/selection-inspector';
-import { registerSmartCopperPourMessageBusBridge, type SmartCopperPourMessageBusBridge } from './infrastructure/lceda/message-bus-bridge';
+import { type SmartCopperPourMessageBusBridge, registerSmartCopperPourMessageBusBridge } from './infrastructure/lceda/message-bus-bridge';
+import { createLcedaPourWriter } from './infrastructure/lceda/pour-writer';
 import { createRuntimeCopperPlanBuilder } from './infrastructure/lceda/runtime-copper-plan-builder';
 import { createRuntimeLcedaPourObjectStore } from './infrastructure/lceda/runtime-pour-object-store';
-import { createLcedaPourWriter } from './infrastructure/lceda/pour-writer';
+import { createLcedaSelectedPrimitivesReader, createSmartCopperPourSelectionInspector } from './infrastructure/lceda/selection-inspector';
 
 let smartCopperPourMessageBridge: SmartCopperPourMessageBusBridge | undefined;
 
@@ -32,10 +29,7 @@ let smartCopperPourMessageBridge: SmartCopperPourMessageBusBridge | undefined;
 export function activate(status?: 'onStartupFinished', arg?: string): void {}
 
 export function about(): void {
-	eda.sys_Dialog.showInformationMessage(
-		eda.sys_I18n.text('EasyEDA extension SDK v', undefined, undefined, extensionConfig.version),
-		eda.sys_I18n.text('About'),
-	);
+	eda.sys_Dialog.showInformationMessage(`${extensionConfig.displayName} v${extensionConfig.version}`, eda.sys_I18n.text('About'));
 }
 
 /**

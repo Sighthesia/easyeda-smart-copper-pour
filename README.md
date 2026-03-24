@@ -1,6 +1,6 @@
 [简体中文](#) | [English](./README.en.md) | [繁體中文](./README.zh-Hant.md) | [日本語](./README.ja.md) | [Русский](./README.ru.md)
 
-# pro-api-sdk
+# Smart Copper Pour
 
 嘉立创EDA & EasyEDA 专业版扩展 API 开发工具
 
@@ -66,7 +66,7 @@
 ### 当前限制
 
 - 真实 LCEDA `Region` / `Pour` 预览 / 落地写入已接入，但相关 API 仍受 BETA 版本行为影响
-- Auto expand 已接入优化链路，但真实运行时骨架输入仍需后续接线
+- Auto expand 已接入真实运行时骨架链路，但现场效果仍受 LCEDA BETA API 与板级障碍数据影响
 - Daisy Chain 的主干约束当前使用起点 / 终点线段近似，不包含更复杂的边界约束
 
 ## 开源许可

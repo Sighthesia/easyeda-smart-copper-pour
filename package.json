@@ -1,7 +1,7 @@
 {
-	"name": "pro-api-sdk",
+	"name": "smart-copper-pour",
 	"version": "1.1.1",
-	"description": "嘉立创EDA & EasyEDA 专业版扩展 API 开发工具",
+	"description": "LCEDA Smart Copper Pour extension with Tree / Star / Daisy Chain preview and apply",
 	"author": "JLCEDA <support@lceda.cn>",
 	"license": "Apache-2.0",
 	"homepage": "https://pro.lceda.cn/",

@@ -1,6 +1,6 @@
 [简体中文](./README.md) | [English](#) | [繁體中文](./README.zh-Hant.md) | [日本語](./README.ja.md) | [Русский](./README.ru.md)
 
-# pro-api-sdk
+# Smart Copper Pour
 
 JLCEDA & EasyEDA Pro Extension API Development Kit
 
@@ -58,7 +58,7 @@ The extension now adds a `Smart Copper Pour` header menu and iframe control pane
 ### Current Limitations
 
 - Real LCEDA `Region` / `Pour` preview / apply integration is in place, but the underlying APIs remain BETA-sensitive
-- Auto expand is wired into the optimization path, but the runtime backbone feed still needs follow-up integration
+- Auto expand is wired into the real runtime skeleton path, but final behavior still depends on LCEDA's BETA APIs and live board obstacle data
 - Daisy Chain currently uses a start/end trunk approximation rather than a richer edge-constrained path model
 
 ## Open-source License
