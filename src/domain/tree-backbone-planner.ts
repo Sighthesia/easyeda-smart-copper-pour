@@ -1,5 +1,6 @@
 import type { PadNode } from './pad-node';
 import type { SkeletonSegment } from './skeleton-types';
+import { TOPOLOGY_BIAS_NEAR_TIE_THRESHOLD } from './topology-bias-threshold';
 import { TopologyMode } from './topology-mode';
 
 export type TreeBackboneTrunkBias = 'neutral' | 'horizontal' | 'vertical';
@@ -23,7 +24,8 @@ interface WeightedEdge {
 	rightIndex: number;
 	startId: string;
 	endId: string;
-	weight: number;
+	distance: number;
+	biasPenalty: number;
 }
 
 /**
@@ -86,7 +88,7 @@ const buildWeightedEdges = (pads: ReadonlyArray<PadNode>, trunkBias: TreeBackbon
 				rightIndex,
 				startId: pads[leftIndex].id,
 				endId: pads[rightIndex].id,
-				weight: measureDistance(pads[leftIndex], pads[rightIndex], trunkBias),
+				...measureDistance(pads[leftIndex], pads[rightIndex], trunkBias),
 			});
 		}
 	}
@@ -95,8 +97,17 @@ const buildWeightedEdges = (pads: ReadonlyArray<PadNode>, trunkBias: TreeBackbon
 };
 
 const compareEdges = (left: WeightedEdge, right: WeightedEdge): number => {
-	if (left.weight !== right.weight) {
-		return left.weight - right.weight;
+	const distanceDelta = left.distance - right.distance;
+	if (distanceDelta !== 0 && Math.abs(distanceDelta) > TOPOLOGY_BIAS_NEAR_TIE_THRESHOLD) {
+		return distanceDelta;
+	}
+
+	if (left.biasPenalty !== right.biasPenalty) {
+		return left.biasPenalty - right.biasPenalty;
+	}
+
+	if (distanceDelta !== 0) {
+		return distanceDelta;
 	}
 
 	if (left.startId !== right.startId) {
@@ -106,20 +117,29 @@ const compareEdges = (left: WeightedEdge, right: WeightedEdge): number => {
 	return left.endId.localeCompare(right.endId);
 };
 
-const measureDistance = (left: PadNode, right: PadNode, trunkBias: TreeBackboneTrunkBias): number => {
+const measureDistance = (left: PadNode, right: PadNode, trunkBias: TreeBackboneTrunkBias): { distance: number; biasPenalty: number } => {
 	const deltaX = Math.abs(left.center.x - right.center.x);
 	const deltaY = Math.abs(left.center.y - right.center.y);
-	const euclideanDistance = Math.hypot(deltaX, deltaY);
+	const distance = Math.hypot(deltaX, deltaY);
 
 	if (trunkBias === 'horizontal') {
-		return euclideanDistance + deltaY * 0.01;
+		return {
+			distance,
+			biasPenalty: deltaY,
+		};
 	}
 
 	if (trunkBias === 'vertical') {
-		return euclideanDistance + deltaX * 0.01;
+		return {
+			distance,
+			biasPenalty: deltaX,
+		};
 	}
 
-	return euclideanDistance;
+	return {
+		distance,
+		biasPenalty: 0,
+	};
 };
 
 const findRoot = (parents: number[], index: number): number => {

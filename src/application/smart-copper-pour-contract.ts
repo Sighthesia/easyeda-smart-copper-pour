@@ -27,6 +27,11 @@ const SMART_COPPER_POUR_TOPOLOGY_MODES = new Set<string>(Object.values(TopologyM
  */
 export type SmartCopperPourCornerStyle = 'round' | 'miter' | 'bevel';
 export type SmartCopperPourTrunkBias = 'neutral' | 'horizontal' | 'vertical';
+export type SmartCopperPourDaisyChainTrunkMode = 'auto' | 'manual';
+
+export interface SmartCopperPourMessageMeta {
+	sequence?: number;
+}
 
 export interface SmartCopperPourTrunkPoint {
 	x: number;
@@ -39,9 +44,10 @@ export interface SmartCopperPourTrunkPoint {
  * @public
  */
 export interface SmartCopperPourSelectionSummary {
-	padCount: number;
+	connectionCount: number;
 	netName: string | null;
 	layerName: string | null;
+	selectionFingerprint: string;
 }
 
 /**
@@ -62,13 +68,26 @@ export interface SmartCopperPourRequestBase {
 
 export interface SmartCopperPourTreeLikeRequest extends SmartCopperPourRequestBase {
 	topologyMode: TopologyMode.Tree | TopologyMode.Star;
+	trunkMode?: never;
+	trunkStart?: never;
+	trunkEnd?: never;
 }
 
-export interface SmartCopperPourDaisyChainRequest extends SmartCopperPourRequestBase {
+export interface SmartCopperPourDaisyChainAutoRequest extends SmartCopperPourRequestBase {
 	topologyMode: TopologyMode.DaisyChain;
+	trunkMode: 'auto';
+	trunkStart?: never;
+	trunkEnd?: never;
+}
+
+export interface SmartCopperPourDaisyChainManualRequest extends SmartCopperPourRequestBase {
+	topologyMode: TopologyMode.DaisyChain;
+	trunkMode: 'manual';
 	trunkStart: SmartCopperPourTrunkPoint;
 	trunkEnd: SmartCopperPourTrunkPoint;
 }
+
+export type SmartCopperPourDaisyChainRequest = SmartCopperPourDaisyChainAutoRequest | SmartCopperPourDaisyChainManualRequest;
 
 export type SmartCopperPourPreviewRequest = SmartCopperPourTreeLikeRequest | SmartCopperPourDaisyChainRequest;
 
@@ -124,6 +143,7 @@ export interface SmartCopperPourErrorPayload {
  */
 export type SmartCopperPourInspectSelectionMessage = {
 	command: 'inspectSelection';
+	meta?: SmartCopperPourMessageMeta;
 	payload?: undefined;
 };
 
@@ -134,6 +154,7 @@ export type SmartCopperPourInspectSelectionMessage = {
  */
 export type SmartCopperPourPreviewMessage = {
 	command: 'preview';
+	meta?: SmartCopperPourMessageMeta;
 	payload: SmartCopperPourPreviewRequest;
 };
 
@@ -144,6 +165,7 @@ export type SmartCopperPourPreviewMessage = {
  */
 export type SmartCopperPourApplyMessage = {
 	command: 'apply';
+	meta?: SmartCopperPourMessageMeta;
 	payload: SmartCopperPourApplyRequest;
 };
 
@@ -154,6 +176,7 @@ export type SmartCopperPourApplyMessage = {
  */
 export type SmartCopperPourClearPreviewMessage = {
 	command: 'clearPreview';
+	meta?: SmartCopperPourMessageMeta;
 	payload?: undefined;
 };
 
@@ -200,6 +223,7 @@ export interface SmartCopperPourResponsePayloadByCommand {
 export interface SmartCopperPourSuccessMessage<TCommand extends SmartCopperPourCommand> {
 	ok: true;
 	command: TCommand;
+	meta?: SmartCopperPourMessageMeta;
 	payload: SmartCopperPourResponsePayloadByCommand[TCommand];
 }
 
@@ -211,6 +235,7 @@ export interface SmartCopperPourSuccessMessage<TCommand extends SmartCopperPourC
 export interface SmartCopperPourFailureMessage<TCommand extends SmartCopperPourCommand> {
 	ok: false;
 	command: TCommand;
+	meta?: SmartCopperPourMessageMeta;
 	error: SmartCopperPourErrorPayload;
 }
 
@@ -272,6 +297,9 @@ export const isSmartCopperPourRequestMessage = (value: unknown): value is SmartC
 	}
 
 	const request = value as { command?: unknown; payload?: unknown };
+	if (!isOptionalSmartCopperPourMessageMeta((value as { meta?: unknown }).meta)) {
+		return false;
+	}
 
 	switch (request.command) {
 		case 'inspectSelection':
@@ -296,7 +324,11 @@ export const isSmartCopperPourResponseMessage = (value: unknown): value is Smart
 		return false;
 	}
 
-	const response = value as { command?: unknown; ok?: unknown; payload?: unknown; error?: unknown };
+	const response = value as { command?: unknown; ok?: unknown; payload?: unknown; error?: unknown; meta?: unknown };
+	if (!isOptionalSmartCopperPourMessageMeta(response.meta)) {
+		return false;
+	}
+
 	if (
 		response.command !== 'inspectSelection' &&
 		response.command !== 'preview' &&
@@ -357,12 +389,38 @@ const isSmartCopperPourPreviewRequest = (value: unknown): value is SmartCopperPo
 		return false;
 	}
 
-	const request = value as { topologyMode?: unknown; trunkStart?: unknown; trunkEnd?: unknown };
+	const request = value as { topologyMode?: unknown; trunkMode?: unknown; trunkStart?: unknown; trunkEnd?: unknown };
 	if (request.topologyMode === TopologyMode.DaisyChain) {
-		return isTrunkPoint(request.trunkStart) && isTrunkPoint(request.trunkEnd);
+		if (request.trunkMode === 'auto') {
+			return request.trunkStart === undefined && request.trunkEnd === undefined;
+		}
+
+		if (request.trunkMode === 'manual') {
+			return isTrunkPoint(request.trunkStart) && isTrunkPoint(request.trunkEnd);
+		}
+
+		return false;
 	}
 
-	return request.topologyMode === TopologyMode.Tree || request.topologyMode === TopologyMode.Star;
+	return (
+		(request.topologyMode === TopologyMode.Tree || request.topologyMode === TopologyMode.Star) &&
+		request.trunkMode === undefined &&
+		request.trunkStart === undefined &&
+		request.trunkEnd === undefined
+	);
+};
+
+const isOptionalSmartCopperPourMessageMeta = (value: unknown): value is SmartCopperPourMessageMeta | undefined => {
+	return value === undefined || isSmartCopperPourMessageMeta(value);
+};
+
+const isSmartCopperPourMessageMeta = (value: unknown): value is SmartCopperPourMessageMeta => {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const meta = value as { sequence?: unknown };
+	return meta.sequence === undefined || isFiniteNumber(meta.sequence);
 };
 
 const isSmartCopperPourErrorPayload = (value: unknown): value is SmartCopperPourErrorPayload => {

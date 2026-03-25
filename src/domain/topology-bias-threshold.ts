@@ -1,0 +1,1 @@
+export const TOPOLOGY_BIAS_NEAR_TIE_THRESHOLD = 0.25;

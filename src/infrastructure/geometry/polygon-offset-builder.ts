@@ -42,7 +42,7 @@ export const buildSkeletonOffsetPolygons = (options: BuildSkeletonOffsetPolygons
 		return [];
 	}
 
-	const cornerStyle = options.cornerStyle ?? 'round';
+	const cornerStyle = options.cornerStyle ?? 'bevel';
 	const strokedPolygons = buildStrokePaths(options.segments).flatMap((path) => strokePath(path, strokeRadius, cornerStyle));
 
 	return unionSkeletonPolygons(strokedPolygons);

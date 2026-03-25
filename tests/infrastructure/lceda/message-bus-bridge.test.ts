@@ -28,7 +28,7 @@ describe('registerSmartCopperPourMessageBusBridge', () => {
 
 		registerSmartCopperPourMessageBusBridge(
 			{
-				inspectSelection: async () => ({ padCount: 2, netName: 'VCC', layerName: 'TopLayer' }),
+				inspectSelection: async () => ({ connectionCount: 2, netName: 'VCC', layerName: 'TopLayer', selectionFingerprint: 'selection-1' }),
 				preview: async () => ({ previewToken: 'preview-1' }),
 				apply: async () => ({ applied: true }),
 				clearPreview: async () => ({ cleared: true }),
@@ -54,6 +54,39 @@ describe('registerSmartCopperPourMessageBusBridge', () => {
 		});
 	});
 
+	test('preserves meta.sequence across bridge request and response', async () => {
+		let requestHandler: ((message: unknown) => void) | undefined;
+		const subscribe = vi.fn((_topic: string, handler: (message: unknown) => void) => {
+			requestHandler = handler;
+			return { cancel: vi.fn() };
+		});
+		const bridgeMessageBus = { subscribe, publish };
+
+		registerSmartCopperPourMessageBusBridge(
+			{
+				inspectSelection: async () => ({ connectionCount: 2, netName: 'VCC', layerName: 'TopLayer', selectionFingerprint: 'selection-1' }),
+				preview: async () => ({ previewToken: 'preview-1' }),
+				apply: async () => ({ applied: true }),
+				clearPreview: async () => ({ cleared: true }),
+			},
+			bridgeMessageBus,
+		);
+
+		requestHandler?.({
+			command: 'inspectSelection',
+			meta: { sequence: 42 },
+		});
+
+		await vi.waitFor(() => {
+			expect(publish).toHaveBeenCalledWith(SMART_COPPER_POUR_RESPONSE_TOPIC, {
+				ok: true,
+				command: 'inspectSelection',
+				payload: { connectionCount: 2, netName: 'VCC', layerName: 'TopLayer', selectionFingerprint: 'selection-1' },
+				meta: { sequence: 42 },
+			});
+		});
+	});
+
 	test('ignores invalid request payloads from the iframe bus', async () => {
 		let requestHandler: ((message: unknown) => void) | undefined;
 		const subscribe = vi.fn((_topic: string, handler: (message: unknown) => void) => {
@@ -64,7 +97,7 @@ describe('registerSmartCopperPourMessageBusBridge', () => {
 
 		registerSmartCopperPourMessageBusBridge(
 			{
-				inspectSelection: async () => ({ padCount: 2, netName: 'VCC', layerName: 'TopLayer' }),
+				inspectSelection: async () => ({ connectionCount: 2, netName: 'VCC', layerName: 'TopLayer', selectionFingerprint: 'selection-1' }),
 				preview: async () => ({ previewToken: 'preview-1' }),
 				apply: async () => ({ applied: true }),
 				clearPreview: async () => ({ cleared: true }),
@@ -126,7 +159,7 @@ describe('registerSmartCopperPourMessageBusBridge', () => {
 
 		const bridge = registerSmartCopperPourMessageBusBridge(
 			{
-				inspectSelection: async () => ({ padCount: 2, netName: 'VCC', layerName: 'TopLayer' }),
+				inspectSelection: async () => ({ connectionCount: 2, netName: 'VCC', layerName: 'TopLayer', selectionFingerprint: 'selection-1' }),
 				preview: async () => ({ previewToken: 'preview-1' }),
 				apply: async () => ({ applied: true }),
 				clearPreview: async () => ({ cleared: true }),

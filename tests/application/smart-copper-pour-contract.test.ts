@@ -4,32 +4,52 @@ import { isSmartCopperPourRequestMessage } from '../../src/application/smart-cop
 import { TopologyMode } from '../../src/domain/topology-mode';
 
 describe('smart copper topology contract', () => {
-	test('accepts every topology mode exposed by the domain enum', () => {
-		for (const topologyMode of Object.values(TopologyMode)) {
-			const payload =
-				topologyMode === TopologyMode.DaisyChain
-					? {
-						topologyMode,
-						width: 1,
-						keepoutMargin: 0.2,
-						cornerStyle: 'round' as const,
-						trunkStart: { x: 0, y: 0 },
-						trunkEnd: { x: 10, y: 0 },
-					}
-					: {
-						topologyMode,
-						width: 1,
-						keepoutMargin: 0.2,
-						cornerStyle: 'round' as const,
-					};
-
+	test('accepts tree and star topology modes with the shared payload shape', () => {
+		for (const topologyMode of [TopologyMode.Tree, TopologyMode.Star]) {
 			expect(
 				isSmartCopperPourRequestMessage({
 					command: 'preview',
-					payload,
+					payload: {
+						topologyMode,
+						width: 1,
+						keepoutMargin: 0.2,
+						cornerStyle: 'round',
+					},
 				}),
 			).toBe(true);
 		}
+	});
+
+	test('accepts daisyChain topology mode with auto trunk routing', () => {
+		expect(
+			isSmartCopperPourRequestMessage({
+				command: 'preview',
+				payload: {
+					topologyMode: TopologyMode.DaisyChain,
+					trunkMode: 'auto',
+					width: 1,
+					keepoutMargin: 0.2,
+					cornerStyle: 'round',
+				},
+			}),
+		).toBe(true);
+	});
+
+	test('accepts daisyChain topology mode with manual trunk routing', () => {
+		expect(
+			isSmartCopperPourRequestMessage({
+				command: 'preview',
+				payload: {
+					topologyMode: TopologyMode.DaisyChain,
+					trunkMode: 'manual',
+					width: 1,
+					keepoutMargin: 0.2,
+					cornerStyle: 'round',
+					trunkStart: { x: 0, y: 0 },
+					trunkEnd: { x: 10, y: 0 },
+				},
+			}),
+		).toBe(true);
 	});
 
 	test('accepts preview requests that omit cornerStyle and use the default', () => {

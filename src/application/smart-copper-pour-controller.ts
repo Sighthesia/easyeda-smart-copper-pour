@@ -1,5 +1,6 @@
 import type {
-	SmartCopperPourDaisyChainRequest,
+	SmartCopperPourDaisyChainAutoRequest,
+	SmartCopperPourDaisyChainManualRequest,
 	SmartCopperPourApplyRequest,
 	SmartCopperPourApplyResult,
 	SmartCopperPourClearPreviewResult,
@@ -21,6 +22,12 @@ import { planTreeBackbone } from '../domain/tree-backbone-planner';
  */
 export interface SmartCopperPourSelectionInspector {
 	inspectSelection(): Promise<SmartCopperPourSelectionSummary>;
+}
+
+export interface SmartCopperPourInspectedSelection {
+	normalizedNodes: ReadonlyArray<PadNode>;
+	netName: string | null;
+	layerName: string | null;
 }
 
 /**
@@ -80,6 +87,7 @@ type SmartCopperPourValidationErrorCode =
 	| 'invalid-max-width'
 	| 'invalid-width-step'
 	| 'invalid-obstacle-margin'
+	| 'invalid-trunk-mode'
 	| 'missing-trunk-start'
 	| 'missing-trunk-end'
 	| 'invalid-trunk-start'
@@ -209,16 +217,21 @@ const validateSmartCopperPourRequest = (request: SmartCopperPourPreviewRequest |
 		throw new SmartCopperPourValidationError('invalid-obstacle-margin', 'Obstacle margin must be 0 or greater.');
 	}
 
-	if (request.topologyMode === 'daisyChain' && request.trunkStart === undefined) {
+	if (request.topologyMode === 'daisyChain' && request.trunkMode !== 'manual' && request.trunkMode !== 'auto') {
+		throw new SmartCopperPourValidationError('invalid-trunk-mode', 'Daisy Chain mode requires trunkMode to be either manual or auto.');
+	}
+
+	if (request.topologyMode === 'daisyChain' && request.trunkMode === 'manual' && request.trunkStart === undefined) {
 		throw new SmartCopperPourValidationError('missing-trunk-start', 'Daisy Chain mode requires a trunk start point.');
 	}
 
-	if (request.topologyMode === 'daisyChain' && request.trunkEnd === undefined) {
+	if (request.topologyMode === 'daisyChain' && request.trunkMode === 'manual' && request.trunkEnd === undefined) {
 		throw new SmartCopperPourValidationError('missing-trunk-end', 'Daisy Chain mode requires a trunk end point.');
 	}
 
 	if (
 		request.topologyMode === 'daisyChain' &&
+		request.trunkMode === 'manual' &&
 		request.trunkStart !== undefined &&
 		(!Number.isFinite(request.trunkStart.x) || !Number.isFinite(request.trunkStart.y))
 	) {
@@ -227,6 +240,7 @@ const validateSmartCopperPourRequest = (request: SmartCopperPourPreviewRequest |
 
 	if (
 		request.topologyMode === 'daisyChain' &&
+		request.trunkMode === 'manual' &&
 		request.trunkEnd !== undefined &&
 		(!Number.isFinite(request.trunkEnd.x) || !Number.isFinite(request.trunkEnd.y))
 	) {
@@ -242,9 +256,10 @@ const validateSmartCopperPourRequest = (request: SmartCopperPourPreviewRequest |
 export const createSmartCopperPourPlaceholderDependencies = (): SmartCopperPourControllerDependencies => ({
 	selectionInspector: {
 		inspectSelection: async (): Promise<SmartCopperPourSelectionSummary> => ({
-			padCount: 0,
+			connectionCount: 0,
 			netName: null,
 			layerName: null,
+			selectionFingerprint: '[]',
 		}),
 	},
 	previewGateway: {
@@ -275,13 +290,53 @@ const resolveOptimizationSkeleton = (
 	}
 
 	if (request.topologyMode === 'star') {
-		return { segments: planStarBackbone(request.padNodes).segments };
+		return { segments: planStarBackbone(request.padNodes, { trunkBias: request.trunkBias }).segments };
 	}
+
+	if (request.trunkMode === 'manual') {
+		const manualDaisyChainRequest = request as SmartCopperPourDaisyChainManualRequest;
+
+		return {
+			segments: planDaisyChainBackbone(request.padNodes, {
+				trunkMode: 'manual',
+				trunkStart: manualDaisyChainRequest.trunkStart,
+				trunkEnd: manualDaisyChainRequest.trunkEnd,
+			}).segments,
+		};
+	}
+
+	const autoDaisyChainRequest = request as SmartCopperPourDaisyChainAutoRequest;
 
 	return {
 		segments: planDaisyChainBackbone(request.padNodes, {
-			trunkStart: (request as SmartCopperPourDaisyChainRequest).trunkStart,
-			trunkEnd: (request as SmartCopperPourDaisyChainRequest).trunkEnd,
+			trunkMode: 'auto',
+			trunkBias: autoDaisyChainRequest.trunkBias,
 		}).segments,
 	};
+};
+
+export const createSmartCopperPourSelectionSummary = (selection: SmartCopperPourInspectedSelection): SmartCopperPourSelectionSummary => ({
+	connectionCount: selection.normalizedNodes.length,
+	netName: selection.netName,
+	layerName: selection.layerName,
+	selectionFingerprint: createSelectionFingerprint(selection.normalizedNodes),
+});
+
+export const createSelectionFingerprint = (normalizedNodes: ReadonlyArray<PadNode>): string => {
+	return JSON.stringify(
+		[...normalizedNodes]
+			.map((node) => ({
+				center: {
+					x: node.center.x,
+					y: node.center.y,
+				},
+				effectiveRadius: node.effectiveRadius,
+				id: node.id,
+				layer: node.layer,
+				net: node.net,
+			}))
+			.sort((leftNode, rightNode) => {
+				return JSON.stringify(leftNode).localeCompare(JSON.stringify(rightNode));
+			}),
+	);
 };
