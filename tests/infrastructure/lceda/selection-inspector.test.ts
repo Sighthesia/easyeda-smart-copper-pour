@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'vitest';
 
 import { createLcedaSelectedPrimitivesReader, createSmartCopperPourSelectionInspector } from '../../../src/infrastructure/lceda/selection-inspector';
+import { createComponentSelection, createPadPrimitive } from './selection-fixtures';
 
 const edaGlobal = globalThis as typeof globalThis & {
 	eda?: {
@@ -79,17 +80,6 @@ const createMethodCollisionPrimitive = () =>
 		getState_StartLayer: () => 'TopLayer',
 	}) as unknown;
 
-const createPadPrimitive = (layer: unknown = 'TopLayer') =>
-	({
-		...createBasePrimitive('pad-runtime-1'),
-		getState_X: () => 12,
-		getState_Y: () => 34,
-		getState_Layer: () => layer,
-		getState_Net: () => 'VCC',
-		getState_Pad: () => ['ELLIPSE', 6, 4],
-		getState_Hole: () => ['ROUND', 2, 2],
-	}) as unknown;
-
 const createOtherPrimitive = () => createBasePrimitive('track-1') as unknown;
 
 describe('createSmartCopperPourSelectionInspector', () => {
@@ -139,7 +129,18 @@ describe('createSmartCopperPourSelectionInspector', () => {
 		const inspector = createSmartCopperPourSelectionInspector({
 			readSelectedPrimitives: async () => [
 				{ id: 'pad-1', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 1, y: 2, width: null, height: null, padRadius: 1, holeRadius: null },
-				{ id: 'pad-invalid', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: Number.NaN, y: 4, width: null, height: null, padRadius: 1.2, holeRadius: null },
+				{
+					id: 'pad-invalid',
+					type: 'PAD',
+					net: 'VCC',
+					layer: 'TopLayer',
+					x: Number.NaN,
+					y: 4,
+					width: null,
+					height: null,
+					padRadius: 1.2,
+					holeRadius: null,
+				},
 				{ id: 'via-1', type: 'VIA', net: 'VCC', x: 3, y: 4, layerSpan: { startLayer: 'TopLayer', endLayer: 'BottomLayer' }, padRadius: 0.8 },
 			],
 		});
@@ -154,7 +155,15 @@ describe('createSmartCopperPourSelectionInspector', () => {
 		const inspector = createSmartCopperPourSelectionInspector({
 			readSelectedPrimitives: async () => [
 				{ id: 'pad-1', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 1, y: 2, width: null, height: null, padRadius: 1, holeRadius: null },
-				{ id: 'via-1', type: 'VIA', net: 'VCC', x: Number.NaN, y: 4, layerSpan: { startLayer: 'TopLayer', endLayer: 'BottomLayer' }, padRadius: 0.8 },
+				{
+					id: 'via-1',
+					type: 'VIA',
+					net: 'VCC',
+					x: Number.NaN,
+					y: 4,
+					layerSpan: { startLayer: 'TopLayer', endLayer: 'BottomLayer' },
+					padRadius: 0.8,
+				},
 			],
 		});
 
@@ -168,7 +177,7 @@ describe('createSmartCopperPourSelectionInspector', () => {
 		const inspector = createSmartCopperPourSelectionInspector({
 			readSelectedPrimitives: async () => [
 				{ id: 'pad-1', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 1, y: 2, width: null, height: null, padRadius: 1, holeRadius: null },
-				({ id: 'via-1', type: 'VIA', net: 'VCC', x: 3, y: 4, layerSpan: null, padRadius: 0.8 } as unknown as never),
+				{ id: 'via-1', type: 'VIA', net: 'VCC', x: 3, y: 4, layerSpan: null, padRadius: 0.8 } as unknown as never,
 			],
 		});
 
@@ -176,6 +185,88 @@ describe('createSmartCopperPourSelectionInspector', () => {
 			code: 'selection-via-unsupported',
 			message: 'Via via-1 is missing supported metadata.',
 		});
+	});
+
+	test('expands a selected component with pad children into child pad candidates', async () => {
+		const inspector = createSmartCopperPourSelectionInspector({
+			readSelectedPrimitives: async () => [
+				createComponentSelection({
+					id: 'component-1',
+					children: [createPadPrimitive({ id: 'component-pad-1', x: 1, y: 2 }), createPadPrimitive({ id: 'component-pad-2', x: 3, y: 4 })],
+				}) as unknown as never,
+			],
+		});
+
+		await expect(inspector.inspectSelection()).resolves.toEqual({
+			connectionCount: 2,
+			netName: 'VCC',
+			layerName: 'TopLayer',
+			selectionFingerprint: JSON.stringify([
+				{
+					center: { x: 1, y: 2 },
+					effectiveRadius: 3,
+					id: 'component-pad-1',
+					layer: 'TopLayer',
+					net: 'VCC',
+				},
+				{
+					center: { x: 3, y: 4 },
+					effectiveRadius: 3,
+					id: 'component-pad-2',
+					layer: 'TopLayer',
+					net: 'VCC',
+				},
+			]),
+		});
+	});
+
+	test('keeps first occurrence order when a component and explicit child pad overlap', async () => {
+		const inspector = createSmartCopperPourSelectionInspector({
+			readSelectedPrimitives: async () => [
+				createComponentSelection({
+					id: 'component-2',
+					children: [createPadPrimitive({ id: 'shared-pad', x: 11, y: 12 }), createPadPrimitive({ id: 'component-pad-3', x: 13, y: 14 })],
+				}) as unknown as never,
+				createPadPrimitive({ id: 'shared-pad', x: 11, y: 12 }) as unknown as never,
+			],
+		});
+
+		const summary = await inspector.inspectSelection();
+
+		expect(summary).toEqual({
+			connectionCount: 2,
+			netName: 'VCC',
+			layerName: 'TopLayer',
+			selectionFingerprint: JSON.stringify([
+				{
+					center: { x: 11, y: 12 },
+					effectiveRadius: 3,
+					id: 'shared-pad',
+					layer: 'TopLayer',
+					net: 'VCC',
+				},
+				{
+					center: { x: 13, y: 14 },
+					effectiveRadius: 3,
+					id: 'component-pad-3',
+					layer: 'TopLayer',
+					net: 'VCC',
+				},
+			]),
+		});
+	});
+
+	test('rejects expandable-looking unsupported selections that expose no pad-like children', async () => {
+		const inspector = createSmartCopperPourSelectionInspector({
+			readSelectedPrimitives: async () => [
+				createComponentSelection({
+					id: 'component-unsupported-1',
+					children: [{ id: 'track-child-1', type: 'TRACK' }],
+				}) as unknown as never,
+			],
+		});
+
+		await expect(inspector.inspectSelection()).rejects.toThrowError(/component-unsupported-1/);
 	});
 
 	test('maps supported via primitives to VIA with a readable layer span', async () => {
@@ -340,7 +431,7 @@ describe('createSmartCopperPourSelectionInspector', () => {
 	test('treats unusable pad layer metadata as null instead of coercing arbitrary values', async () => {
 		edaGlobal.eda = {
 			pcb_SelectControl: {
-				getAllSelectedPrimitives: async () => [createPadPrimitive({ kind: 'TopLayer' })],
+				getAllSelectedPrimitives: async () => [createPadPrimitive({ layer: { kind: 'TopLayer' } })],
 			},
 		};
 

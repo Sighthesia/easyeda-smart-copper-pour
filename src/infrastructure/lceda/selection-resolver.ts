@@ -80,99 +80,197 @@ export class SelectionResolutionError extends Error {
 	}
 }
 
+// eslint-disable-next-line complexity
 export const resolveSelectedPadNodes = (primitives: readonly LcedaSelectablePrimitive[]): PadNode[] => {
 	if (primitives.length === 0) {
 		throw new SelectionResolutionError('selection-empty', 'Select at least two pads before running Smart Copper Pour.');
 	}
 
-	const pads = primitives.filter(isPadLike);
-	const selectedPads = primitives.filter(isPadSelection);
-	const invalidPads = selectedPads.filter((primitive) => !isPadLike(primitive));
-	const selectedVias = primitives.filter(isViaSelection);
-	const vias = selectedVias.filter(isViaLike);
-	const invalidVias = selectedVias.filter((primitive) => !isViaLike(primitive));
-	const selectedUnsupportedVias = primitives.filter(isUnsupportedViaSelection);
-	const unsupportedVias = selectedUnsupportedVias.filter(isUnsupportedViaLike);
-	const invalidUnsupportedVias = selectedUnsupportedVias.filter((primitive) => !isUnsupportedViaLike(primitive));
-	if (invalidPads.length > 0) {
-		throw new SelectionResolutionError('selection-pad-invalid', `Pad ${invalidPads[0].id} is missing supported metadata.`);
+	const normalizedNodes: PadNode[] = [];
+	let net: string | null = null;
+	let layer: string | null = null;
+	let padCount = 0;
+	let sawSelectableVia = false;
+	const pendingViaPrimitives: LcedaSelectablePrimitive[] = [];
+
+	for (const primitive of primitives) {
+		if (isPadSelection(primitive)) {
+			if (!isPadLike(primitive)) {
+				throw new SelectionResolutionError('selection-pad-invalid', `Pad ${primitive.id} is missing supported metadata.`);
+			}
+
+			const currentNet = requireValue(primitive.net, 'selection-net-missing', 'Selected pads must belong to a named net.');
+			const currentLayer = requireValue(primitive.layer, 'selection-layer-missing', 'Selected pads must be on a named layer.');
+			if (net === null) {
+				net = currentNet;
+				layer = currentLayer;
+				if (pendingViaPrimitives.length > 0) {
+					finalizePendingVias(pendingViaPrimitives, currentLayer, normalizedNodes, net, (value) => {
+						net = value;
+					});
+				}
+			} else {
+				if (currentNet !== net) {
+					throw new SelectionResolutionError('selection-mixed-net', 'Selected pads must share the same net.');
+				}
+
+				if (currentLayer !== layer) {
+					throw new SelectionResolutionError('selection-mixed-layer', 'Selected pads must be on the same layer.');
+				}
+			}
+
+			normalizedNodes.push({
+				id: primitive.id,
+				net: currentNet,
+				layer: currentLayer,
+				center: {
+					x: primitive.x,
+					y: primitive.y,
+				},
+				effectiveRadius: resolveEffectiveRadius(primitive),
+			});
+			padCount += 1;
+			continue;
+		}
+
+		if (isViaSelection(primitive)) {
+			sawSelectableVia = true;
+			if (layer === null) {
+				pendingViaPrimitives.push(primitive);
+				continue;
+			}
+
+			if (!isViaLike(primitive)) {
+				throw new SelectionResolutionError('selection-via-unsupported', `Via ${primitive.id} is missing supported metadata.`);
+			}
+
+			const currentNet = requireValue(primitive.net, 'selection-net-missing', 'Selected pads must belong to a named net.');
+			if (net === null) {
+				net = currentNet;
+			} else if (currentNet !== net) {
+				throw new SelectionResolutionError('selection-mixed-net', 'Selected pads must share the same net.');
+			}
+
+			if (!isSupportedLayerName(primitive.layerSpan.startLayer) || !isSupportedLayerName(primitive.layerSpan.endLayer)) {
+				throw new SelectionResolutionError('selection-via-unsupported', `Via ${primitive.id} uses unsupported layer span metadata.`);
+			}
+
+			if (!doesViaSpanLayer(primitive.layerSpan, layer)) {
+				throw new SelectionResolutionError(
+					'selection-via-layer-invalid',
+					`Via ${primitive.id} does not span the resolved target layer ${layer}.`,
+				);
+			}
+
+			normalizedNodes.push({
+				id: primitive.id,
+				net: currentNet,
+				layer,
+				center: {
+					x: primitive.x,
+					y: primitive.y,
+				},
+				effectiveRadius: resolveViaEffectiveRadius(primitive),
+			});
+			continue;
+		}
+
+		if (isUnsupportedViaSelection(primitive)) {
+			sawSelectableVia = true;
+			if (layer === null) {
+				pendingViaPrimitives.push(primitive);
+				continue;
+			}
+
+			if (!isUnsupportedViaLike(primitive)) {
+				throw new SelectionResolutionError('selection-via-unsupported', `Via ${primitive.id} is missing supported metadata.`);
+			}
+
+			throw new SelectionResolutionError('selection-via-unsupported', `Via ${primitive.id} is missing supported layer span metadata.`);
+		}
 	}
 
-	if (pads.length === 0 && (selectedVias.length > 0 || unsupportedVias.length > 0)) {
+	if (padCount === 0 && sawSelectableVia) {
 		throw new SelectionResolutionError('selection-layer-missing', 'Select at least one pad on a named layer.');
 	}
 
-	if (invalidVias.length > 0) {
-		throw new SelectionResolutionError('selection-via-unsupported', `Via ${invalidVias[0].id} is missing supported metadata.`);
-	}
-
-	if (invalidUnsupportedVias.length > 0) {
-		throw new SelectionResolutionError('selection-via-unsupported', `Via ${invalidUnsupportedVias[0].id} is missing supported metadata.`);
-	}
-
-	if (unsupportedVias.length > 0) {
-		throw new SelectionResolutionError('selection-via-unsupported', `Via ${unsupportedVias[0].id} is missing supported layer span metadata.`);
-	}
-
-	if (pads.length === 0) {
+	if (padCount === 0) {
 		throw new SelectionResolutionError('selection-too-small', 'Select at least two pads on the same net.');
 	}
 
-	const net = requireValue(pads[0].net, 'selection-net-missing', 'Selected pads must belong to a named net.');
-	const layer = requireValue(pads[0].layer, 'selection-layer-missing', 'Selected pads must be on a named layer.');
-
-	for (const pad of pads) {
-		if (requireValue(pad.net, 'selection-net-missing', 'Selected pads must belong to a named net.') !== net) {
-			throw new SelectionResolutionError('selection-mixed-net', 'Selected pads must share the same net.');
-		}
-
-		if (requireValue(pad.layer, 'selection-layer-missing', 'Selected pads must be on a named layer.') !== layer) {
-			throw new SelectionResolutionError('selection-mixed-layer', 'Selected pads must be on the same layer.');
-		}
+	if (pendingViaPrimitives.length > 0) {
+		const targetLayer = requireValue(layer, 'selection-layer-missing', 'Selected pads must be on a named layer.');
+		finalizePendingVias(pendingViaPrimitives, targetLayer, normalizedNodes, net, (value) => {
+			net = value;
+		});
 	}
 
-	const normalizedVias = vias.map((via) => {
-		if (requireValue(via.net, 'selection-net-missing', 'Selected pads must belong to a named net.') !== net) {
-			throw new SelectionResolutionError('selection-mixed-net', 'Selected pads must share the same net.');
-		}
+	requireValue(net, 'selection-net-missing', 'Selected pads must belong to a named net.');
+	requireValue(layer, 'selection-layer-missing', 'Selected pads must be on a named layer.');
 
-		if (!isSupportedLayerName(via.layerSpan.startLayer) || !isSupportedLayerName(via.layerSpan.endLayer)) {
-			throw new SelectionResolutionError('selection-via-unsupported', `Via ${via.id} uses unsupported layer span metadata.`);
-		}
-
-		if (!doesViaSpanLayer(via.layerSpan, layer)) {
-			throw new SelectionResolutionError('selection-via-layer-invalid', `Via ${via.id} does not span the resolved target layer ${layer}.`);
-		}
-
-		return {
-			id: via.id,
-			net,
-			layer,
-			center: {
-				x: via.x,
-				y: via.y,
-			},
-			effectiveRadius: resolveViaEffectiveRadius(via),
-		};
-	});
-
-	const normalizedPads = pads.map((pad) => ({
-		id: pad.id,
-		net,
-		layer,
-		center: {
-			x: pad.x,
-			y: pad.y,
-		},
-		effectiveRadius: resolveEffectiveRadius(pad),
-	}));
-
-	const normalizedNodes = [...normalizedPads, ...normalizedVias];
 	if (normalizedNodes.length < 2) {
 		throw new SelectionResolutionError('selection-too-small', 'Select at least two pads on the same net.');
 	}
 
 	return normalizedNodes;
+};
+
+const finalizePendingVias = (
+	pendingViaPrimitives: LcedaSelectablePrimitive[],
+	targetLayer: string,
+	normalizedNodes: PadNode[],
+	net: string | null,
+	onNetChange: (value: string) => void,
+): void => {
+	for (const pendingVia of pendingViaPrimitives) {
+		if (isViaSelection(pendingVia)) {
+			if (!isViaLike(pendingVia)) {
+				throw new SelectionResolutionError('selection-via-unsupported', `Via ${pendingVia.id} is missing supported metadata.`);
+			}
+
+			const currentNet = requireValue(pendingVia.net, 'selection-net-missing', 'Selected pads must belong to a named net.');
+			if (net !== null && currentNet !== net) {
+				throw new SelectionResolutionError('selection-mixed-net', 'Selected pads must share the same net.');
+			}
+
+			onNetChange(currentNet);
+
+			if (!isSupportedLayerName(pendingVia.layerSpan.startLayer) || !isSupportedLayerName(pendingVia.layerSpan.endLayer)) {
+				throw new SelectionResolutionError('selection-via-unsupported', `Via ${pendingVia.id} uses unsupported layer span metadata.`);
+			}
+
+			if (!doesViaSpanLayer(pendingVia.layerSpan, targetLayer)) {
+				throw new SelectionResolutionError(
+					'selection-via-layer-invalid',
+					`Via ${pendingVia.id} does not span the resolved target layer ${targetLayer}.`,
+				);
+			}
+
+			normalizedNodes.push({
+				id: pendingVia.id,
+				net: currentNet,
+				layer: targetLayer,
+				center: {
+					x: pendingVia.x,
+					y: pendingVia.y,
+				},
+				effectiveRadius: resolveViaEffectiveRadius(pendingVia),
+			});
+			continue;
+		}
+
+		if (isUnsupportedViaSelection(pendingVia)) {
+			if (!isUnsupportedViaLike(pendingVia)) {
+				throw new SelectionResolutionError('selection-via-unsupported', `Via ${pendingVia.id} is missing supported metadata.`);
+			}
+
+			throw new SelectionResolutionError('selection-via-unsupported', `Via ${pendingVia.id} uses unsupported layer span metadata.`);
+		}
+	}
+
+	if (pendingViaPrimitives.length > 0) {
+		pendingViaPrimitives.length = 0;
+	}
 };
 
 const isPadLike = (primitive: LcedaSelectablePrimitive): primitive is LcedaPadLike => {

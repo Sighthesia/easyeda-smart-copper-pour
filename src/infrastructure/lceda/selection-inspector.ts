@@ -1,6 +1,8 @@
 import type { SmartCopperPourSelectionSummary } from '../../application/smart-copper-pour-contract';
-import { createSmartCopperPourSelectionSummary, type SmartCopperPourSelectionInspector } from '../../application/smart-copper-pour-controller';
+import { type SmartCopperPourSelectionInspector, createSmartCopperPourSelectionSummary } from '../../application/smart-copper-pour-controller';
+import { normalizeLcedaSelectionPrimitives } from './selection-expander';
 import { type LcedaSelectablePrimitive, type LcedaViaLayerSpan, resolveSelectedPadNodes } from './selection-resolver';
+import { isLcedaPadPrimitive } from './selection-shapes';
 
 interface LcedaPadSelectablePrimitive extends LcedaSelectablePrimitive {
 	type: 'PAD';
@@ -49,16 +51,6 @@ export interface LcedaSelectedPrimitivesReader {
 	readSelectedPrimitives: () => Promise<readonly LcedaInspectedSelectablePrimitive[]>;
 }
 
-interface LcedaPadPrimitiveShape {
-	getState_PrimitiveId: () => string;
-	getState_X: () => number;
-	getState_Y: () => number;
-	getState_Layer: () => unknown;
-	getState_Net: () => string | undefined;
-	getState_Pad: () => [unknown, number, number] | [unknown, number, number, number] | [unknown, unknown] | undefined;
-	getState_Hole: () => [unknown, number, number] | null;
-}
-
 interface LcedaViaPrimitiveShape {
 	getState_PrimitiveId: () => string;
 	getState_X: () => number;
@@ -72,7 +64,8 @@ interface LcedaViaPrimitiveShape {
 export const createSmartCopperPourSelectionInspector = (reader: LcedaSelectedPrimitivesReader): SmartCopperPourSelectionInspector => ({
 	inspectSelection: async (): Promise<SmartCopperPourSelectionSummary> => {
 		const selectedPrimitives = await reader.readSelectedPrimitives();
-		const normalizedNodes = resolveSelectedPadNodes(selectedPrimitives);
+		const normalizedPrimitives = normalizeSelectedPrimitives(selectedPrimitives);
+		const normalizedNodes = resolveSelectedPadNodes(normalizedPrimitives);
 		return createSmartCopperPourSelectionSummary({
 			normalizedNodes,
 			netName: normalizedNodes[0]?.net ?? null,
@@ -84,7 +77,7 @@ export const createSmartCopperPourSelectionInspector = (reader: LcedaSelectedPri
 export const createLcedaSelectedPrimitivesReader = (): LcedaSelectedPrimitivesReader => ({
 	readSelectedPrimitives: async (): Promise<readonly LcedaInspectedSelectablePrimitive[]> => {
 		const primitives = await readRuntimeSelectedPrimitives();
-		return primitives.map(toSelectablePrimitive);
+		return normalizeLcedaSelectionPrimitives(primitives).filter(isRuntimePrimitive).map(toSelectablePrimitive);
 	},
 });
 
@@ -153,16 +146,60 @@ const toSelectablePrimitive = (primitive: IPCB_Primitive): LcedaInspectedSelecta
 	};
 };
 
-const isLcedaPadPrimitive = (primitive: IPCB_Primitive): primitive is IPCB_Primitive & LcedaPadPrimitiveShape => {
-	const candidate = primitive as Partial<LcedaPadPrimitiveShape>;
+const normalizeSelectedPrimitives = (primitives: readonly unknown[]): readonly LcedaSelectablePrimitive[] => {
+	const normalizedPrimitives: LcedaSelectablePrimitive[] = [];
+	const seenIds = new Set<string>();
+
+	for (const primitive of normalizeLcedaSelectionPrimitives(primitives)) {
+		const normalizedPrimitive = normalizePrimitive(primitive);
+		if (normalizedPrimitive !== null && !seenIds.has(normalizedPrimitive.id)) {
+			seenIds.add(normalizedPrimitive.id);
+			normalizedPrimitives.push(normalizedPrimitive);
+		}
+	}
+
+	return normalizedPrimitives;
+};
+
+const normalizePrimitive = (primitive: unknown): LcedaSelectablePrimitive | null => {
+	if (primitive === null || typeof primitive !== 'object') {
+		return null;
+	}
+
+	if (isInspectedSelectablePrimitive(primitive)) {
+		return primitive;
+	}
+
+	if (hasRuntimePrimitiveShape(primitive)) {
+		return toSelectablePrimitive(primitive as IPCB_Primitive);
+	}
+
+	return null;
+};
+
+const isInspectedSelectablePrimitive = (primitive: unknown): primitive is LcedaSelectablePrimitive => {
+	if (primitive === null || typeof primitive !== 'object') {
+		return false;
+	}
+
+	const candidate = primitive as Partial<LcedaSelectablePrimitive> & { type?: string };
 	return (
-		typeof candidate.getState_Pad === 'function' &&
-		typeof candidate.getState_Hole === 'function' &&
-		typeof candidate.getState_X === 'function' &&
-		typeof candidate.getState_Y === 'function' &&
-		typeof candidate.getState_Net === 'function' &&
-		typeof candidate.getState_Layer === 'function'
+		typeof candidate.id === 'string' &&
+		(candidate.type === 'PAD' || candidate.type === 'VIA' || candidate.type === 'VIA_UNSUPPORTED' || candidate.type === 'OTHER')
 	);
+};
+
+const hasRuntimePrimitiveShape = (primitive: unknown): primitive is IPCB_Primitive => {
+	if (primitive === null || typeof primitive !== 'object') {
+		return false;
+	}
+
+	const candidate = primitive as Partial<IPCB_Primitive>;
+	return typeof candidate.getState_PrimitiveId === 'function';
+};
+
+const isRuntimePrimitive = (primitive: unknown): primitive is IPCB_Primitive => {
+	return hasRuntimePrimitiveShape(primitive);
 };
 
 const isSupportedLcedaViaPrimitive = (primitive: IPCB_Primitive): primitive is IPCB_Primitive & LcedaViaPrimitiveShape => {

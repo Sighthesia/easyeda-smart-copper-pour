@@ -99,6 +99,18 @@ describe('resolveSelectedPadNodes', () => {
 		]);
 	});
 
+	test('keeps earlier vias on the first non-via pad layer', () => {
+		const padNodes = resolveSelectedPadNodes([
+			createVia({ id: 'via-1', x: 1, y: 1, layerSpan: { startLayer: 'TopLayer', endLayer: 'BottomLayer' } }),
+			createPad({ id: 'pad-1', x: 2, y: 2, layer: 'TopLayer' }),
+			createVia({ id: 'via-2', x: 3, y: 3, layerSpan: { startLayer: 'TopLayer', endLayer: 'BottomLayer' } }),
+		]);
+
+		expect(padNodes).toHaveLength(3);
+		expect(padNodes.map((node) => node.id)).toEqual(['via-1', 'pad-1', 'via-2']);
+		expect(padNodes.every((node) => node.layer === 'TopLayer')).toBe(true);
+	});
+
 	test('rejects a via without a usable radius explicitly', () => {
 		expectSelectionError(
 			[createPad({ id: 'pad-1', layer: 'TopLayer' }), createVia({ id: 'via-1', padRadius: null, holeRadius: null, width: null, height: null })],
@@ -143,7 +155,7 @@ describe('resolveSelectedPadNodes', () => {
 		expectSelectionError(
 			[
 				createPad({ id: 'pad-1', layer: 'TopLayer' }),
-				({ id: 'via-1', type: 'VIA', net: 'VCC', x: 15, y: 25, layerSpan: null, padRadius: 0.4 } as unknown as LcedaSelectablePrimitive),
+				{ id: 'via-1', type: 'VIA', net: 'VCC', x: 15, y: 25, layerSpan: null, padRadius: 0.4 } as unknown as LcedaSelectablePrimitive,
 			],
 			'selection-via-unsupported',
 			'Via via-1 is missing supported metadata.',

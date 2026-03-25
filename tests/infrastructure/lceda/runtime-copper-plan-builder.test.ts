@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import type {
 	SmartCopperPourDaisyChainAutoRequest,
@@ -10,12 +10,10 @@ import { planDaisyChainBackbone } from '../../../src/domain/daisy-chain-planner'
 import type { PadNode } from '../../../src/domain/pad-node';
 import { TopologyMode } from '../../../src/domain/topology-mode';
 import { buildSkeletonOffsetPolygons } from '../../../src/infrastructure/geometry/polygon-offset-builder';
-import type {
-	LcedaInspectedSelectablePrimitive,
-	LcedaSelectedPrimitivesReader,
-} from '../../../src/infrastructure/lceda/selection-inspector';
-import type { LcedaSelectablePrimitive } from '../../../src/infrastructure/lceda/selection-resolver';
 import { createRuntimeCopperPlanBuilder } from '../../../src/infrastructure/lceda/runtime-copper-plan-builder';
+import type { LcedaInspectedSelectablePrimitive, LcedaSelectedPrimitivesReader } from '../../../src/infrastructure/lceda/selection-inspector';
+import type { LcedaSelectablePrimitive } from '../../../src/infrastructure/lceda/selection-resolver';
+import { createComponentSelection, createPadPrimitive } from './selection-fixtures';
 
 type LcedaInspectedPadPrimitive = Extract<LcedaInspectedSelectablePrimitive, { type: 'PAD' }>;
 
@@ -35,6 +33,20 @@ const createPad = (overrides: Partial<LcedaInspectedPadPrimitive> = {}): LcedaIn
 
 const createReader = (primitives: readonly LcedaInspectedSelectablePrimitive[]): LcedaSelectedPrimitivesReader => ({
 	readSelectedPrimitives: async () => primitives,
+});
+
+const edaGlobal = globalThis as typeof globalThis & {
+	eda?: {
+		pcb_SelectControl?: {
+			getAllSelectedPrimitives?: () => Promise<unknown>;
+		};
+	};
+};
+
+const originalEda = edaGlobal.eda;
+
+afterEach(() => {
+	edaGlobal.eda = originalEda;
 });
 
 const createTreeRequest = (): SmartCopperPourTreeLikeRequest => ({
@@ -76,65 +88,85 @@ const toPadNodes = (primitives: readonly LcedaSelectablePrimitive[]): PadNode[] 
 	}));
 
 describe('createRuntimeCopperPlanBuilder', () => {
-  test('rejects empty selection through the resolver-backed builder flow', async () => {
-    const builder = createRuntimeCopperPlanBuilder(createReader([]));
+	test('rejects empty selection through the resolver-backed builder flow', async () => {
+		const builder = createRuntimeCopperPlanBuilder(createReader([]));
 
-    await expect(builder.buildWriterInput(createTreeRequest())).rejects.toThrow(
-      'Select at least two pads before running Smart Copper Pour.',
-    );
-  });
+		await expect(builder.buildWriterInput(createTreeRequest())).rejects.toThrow('Select at least two pads before running Smart Copper Pour.');
+	});
 
-  test('rejects an unsupported topology mode explicitly', async () => {
-    const builder = createRuntimeCopperPlanBuilder(
-      createReader([
-        createPad({ id: 'pad-a', x: 0, y: 0 }),
-        createPad({ id: 'pad-b', x: 4, y: 0 }),
-      ]),
-    );
+	test('rejects an unsupported topology mode explicitly', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([createPad({ id: 'pad-a', x: 0, y: 0 }), createPad({ id: 'pad-b', x: 4, y: 0 })]),
+		);
 
 		await expect(
 			builder.buildWriterInput({
-				topologyMode: 'bogus' as TopologyMode,
+				topologyMode: 'bogus',
 				width: 2,
 				keepoutMargin: 0,
-			} as SmartCopperPourPreviewRequest),
+			} as unknown as SmartCopperPourPreviewRequest),
 		).rejects.toThrow('Unsupported topology mode: bogus');
 	});
 
-  test('builds tree polygons from selected pads', async () => {
-    const builder = createRuntimeCopperPlanBuilder(
-      createReader([
-        createPad({ id: 'pad-a', x: 0, y: 0 }),
-        createPad({ id: 'pad-b', x: 4, y: 0 }),
-        createPad({ id: 'pad-c', x: 0, y: 4 }),
-      ]),
-    );
+	test('builds tree polygons from selected pads', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([createPad({ id: 'pad-a', x: 0, y: 0 }), createPad({ id: 'pad-b', x: 4, y: 0 }), createPad({ id: 'pad-c', x: 0, y: 4 })]),
+		);
 
-    const result = await builder.buildWriterInput(createTreeRequest());
+		const result = await builder.buildWriterInput(createTreeRequest());
 
-    expect(result.layerName).toBe('TopLayer');
-    expect(result.netName).toBe('VCC');
-    expect(result.polygons.length).toBeGreaterThan(0);
-    expect(result.polygons[0].vertices.length).toBeGreaterThan(4);
-    // eslint-disable-next-line max-nested-callbacks
-    expect(bounds(result.polygons)).toEqual({ minX: expect.any(Number), maxX: expect.any(Number), minY: expect.any(Number), maxY: expect.any(Number) });
-    expect(bounds(result.polygons).minX).toBeLessThan(0);
-    expect(bounds(result.polygons).maxX).toBeGreaterThan(4);
-    expect(bounds(result.polygons).maxY).toBeGreaterThan(4);
-  });
+		expect(result.layerName).toBe('TopLayer');
+		expect(result.netName).toBe('VCC');
+		expect(result.polygons.length).toBeGreaterThan(0);
+		expect(result.polygons[0].vertices.length).toBeGreaterThan(4);
+		// eslint-disable-next-line max-nested-callbacks
+		expect(bounds(result.polygons)).toEqual({
+			minX: expect.any(Number),
+			maxX: expect.any(Number),
+			minY: expect.any(Number),
+			maxY: expect.any(Number),
+		});
+		expect(bounds(result.polygons).minX).toBeLessThan(0);
+		expect(bounds(result.polygons).maxX).toBeGreaterThan(4);
+		expect(bounds(result.polygons).maxY).toBeGreaterThan(4);
+	});
+
+	test('builds tree polygons from a component-expanded selection through the default reader path', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => [
+					createComponentSelection({
+						id: 'component-1',
+						children: [
+							createPadPrimitive({ id: 'component-pad-1', x: 0, y: 0 }),
+							createPadPrimitive({ id: 'component-pad-2', x: 4, y: 0 }),
+							createPadPrimitive({ id: 'component-pad-3', x: 0, y: 4 }),
+						],
+					}),
+				],
+			},
+		};
+
+		const builder = createRuntimeCopperPlanBuilder();
+		const result = await builder.buildWriterInput(createTreeRequest());
+
+		expect(result.layerName).toBe('TopLayer');
+		expect(result.netName).toBe('VCC');
+		expect(result.polygons.length).toBeGreaterThan(0);
+		expect(result.polygons[0].vertices.length).toBeGreaterThan(4);
+		expect(bounds(result.polygons).minX).toBeLessThan(0);
+		expect(bounds(result.polygons).maxX).toBeGreaterThan(4);
+		expect(bounds(result.polygons).maxY).toBeGreaterThan(4);
+	});
 
 	test('builds star polygons from selected pads', async () => {
 		const builder = createRuntimeCopperPlanBuilder(
-			createReader([
-        createPad({ id: 'pad-a', x: 0, y: 0 }),
-        createPad({ id: 'pad-b', x: 6, y: 0 }),
-        createPad({ id: 'pad-c', x: 0, y: 6 }),
-      ]),
-    );
+			createReader([createPad({ id: 'pad-a', x: 0, y: 0 }), createPad({ id: 'pad-b', x: 6, y: 0 }), createPad({ id: 'pad-c', x: 0, y: 6 })]),
+		);
 
-    const result = await builder.buildWriterInput(createStarRequest());
+		const result = await builder.buildWriterInput(createStarRequest());
 
-    expect(result.polygons.length).toBeGreaterThan(0);
+		expect(result.polygons.length).toBeGreaterThan(0);
 		expect(result.polygons[0].vertices.length).toBeGreaterThan(4);
 	});
 
@@ -161,10 +193,7 @@ describe('createRuntimeCopperPlanBuilder', () => {
 				'../../../src/infrastructure/lceda/runtime-copper-plan-builder'
 			);
 			const builder = createMockedRuntimeCopperPlanBuilder(
-				createReader([
-					createPad({ id: 'pad-a', x: 0, y: 0 }),
-					createPad({ id: 'pad-b', x: 4, y: 0 }),
-				]),
+				createReader([createPad({ id: 'pad-a', x: 0, y: 0 }), createPad({ id: 'pad-b', x: 4, y: 0 })]),
 			);
 
 			await builder.buildWriterInput({
@@ -172,10 +201,7 @@ describe('createRuntimeCopperPlanBuilder', () => {
 				trunkBias: 'vertical',
 			});
 
-			expect(planStarBackbone).toHaveBeenCalledWith(
-				expect.any(Array),
-				{ trunkBias: 'vertical' },
-			);
+			expect(planStarBackbone).toHaveBeenCalledWith(expect.any(Array), { trunkBias: 'vertical' });
 		} finally {
 			vi.doUnmock('../../../src/domain/star-backbone-planner');
 			vi.resetModules();
@@ -192,22 +218,18 @@ describe('createRuntimeCopperPlanBuilder', () => {
 			]),
 		);
 
-    const treeResult = await builder.buildWriterInput(createTreeRequest());
-    const starResult = await builder.buildWriterInput(createStarRequest());
+		const treeResult = await builder.buildWriterInput(createTreeRequest());
+		const starResult = await builder.buildWriterInput(createStarRequest());
 
-    expect(treeResult.polygons).not.toEqual(starResult.polygons);
-  });
+		expect(treeResult.polygons).not.toEqual(starResult.polygons);
+	});
 
 	test('builds daisy-chain polygons from trunk endpoints', async () => {
 		const builder = createRuntimeCopperPlanBuilder(
-			createReader([
-				createPad({ id: 'pad-a', x: 2, y: 2 }),
-        createPad({ id: 'pad-b', x: 6, y: 4 }),
-        createPad({ id: 'pad-c', x: 8, y: -3 }),
-      ]),
-    );
+			createReader([createPad({ id: 'pad-a', x: 2, y: 2 }), createPad({ id: 'pad-b', x: 6, y: 4 }), createPad({ id: 'pad-c', x: 8, y: -3 })]),
+		);
 
-    const result = await builder.buildWriterInput(createDaisyChainRequest());
+		const result = await builder.buildWriterInput(createDaisyChainRequest());
 
 		expect(result.polygons.length).toBeGreaterThan(0);
 		expect(result.polygons.some((polygon) => polygon.vertices.some((vertex) => vertex.x < 0 || vertex.x > 10))).toBe(true);
@@ -253,10 +275,7 @@ describe('createRuntimeCopperPlanBuilder', () => {
 
 	test('rejects manual daisy-chain requests without a trunk end point', async () => {
 		const builder = createRuntimeCopperPlanBuilder(
-			createReader([
-				createPad({ id: 'pad-a', x: 2, y: 2 }),
-				createPad({ id: 'pad-b', x: 6, y: 4 }),
-			]),
+			createReader([createPad({ id: 'pad-a', x: 2, y: 2 }), createPad({ id: 'pad-b', x: 6, y: 4 })]),
 		);
 
 		await expect(
@@ -272,10 +291,7 @@ describe('createRuntimeCopperPlanBuilder', () => {
 
 	test('rejects manual daisy-chain requests with an invalid trunk end point', async () => {
 		const builder = createRuntimeCopperPlanBuilder(
-			createReader([
-				createPad({ id: 'pad-a', x: 2, y: 2 }),
-				createPad({ id: 'pad-b', x: 6, y: 4 }),
-			]),
+			createReader([createPad({ id: 'pad-a', x: 2, y: 2 }), createPad({ id: 'pad-b', x: 6, y: 4 })]),
 		);
 
 		await expect(
@@ -292,10 +308,7 @@ describe('createRuntimeCopperPlanBuilder', () => {
 
 	test('rejects daisy-chain requests without trunkMode instead of falling back to auto', async () => {
 		const builder = createRuntimeCopperPlanBuilder(
-			createReader([
-				createPad({ id: 'pad-a', x: 2, y: 2 }),
-				createPad({ id: 'pad-b', x: 6, y: 4 }),
-			]),
+			createReader([createPad({ id: 'pad-a', x: 2, y: 2 }), createPad({ id: 'pad-b', x: 6, y: 4 })]),
 		);
 
 		await expect(
@@ -309,10 +322,7 @@ describe('createRuntimeCopperPlanBuilder', () => {
 
 	test('rejects daisy-chain requests with an invalid trunkMode instead of falling back to auto', async () => {
 		const builder = createRuntimeCopperPlanBuilder(
-			createReader([
-				createPad({ id: 'pad-a', x: 2, y: 2 }),
-				createPad({ id: 'pad-b', x: 6, y: 4 }),
-			]),
+			createReader([createPad({ id: 'pad-a', x: 2, y: 2 }), createPad({ id: 'pad-b', x: 6, y: 4 })]),
 		);
 
 		await expect(
@@ -325,34 +335,30 @@ describe('createRuntimeCopperPlanBuilder', () => {
 		).rejects.toThrow('Daisy Chain mode requires trunkMode to be either manual or auto.');
 	});
 
-  test('does not fall back to a placeholder square', async () => {
-    const builder = createRuntimeCopperPlanBuilder(
-      createReader([
-        createPad({ id: 'pad-a', x: 1, y: 1 }),
-        createPad({ id: 'pad-b', x: 5, y: 1 }),
-        createPad({ id: 'pad-c', x: 1, y: 5 }),
-      ]),
-    );
+	test('does not fall back to a placeholder square', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([createPad({ id: 'pad-a', x: 1, y: 1 }), createPad({ id: 'pad-b', x: 5, y: 1 }), createPad({ id: 'pad-c', x: 1, y: 5 })]),
+		);
 
-    const result = await builder.buildWriterInput(createTreeRequest());
+		const result = await builder.buildWriterInput(createTreeRequest());
 
-    const resultBounds = bounds(result.polygons);
+		const resultBounds = bounds(result.polygons);
 
-    expect(resultBounds.minX).toBeLessThan(1);
-    expect(resultBounds.maxX).toBeGreaterThan(5);
-    expect(resultBounds.minY).toBeLessThan(1);
-    expect(resultBounds.maxY).toBeGreaterThan(5);
-  });
+		expect(resultBounds.minX).toBeLessThan(1);
+		expect(resultBounds.maxX).toBeGreaterThan(5);
+		expect(resultBounds.minY).toBeLessThan(1);
+		expect(resultBounds.maxY).toBeGreaterThan(5);
+	});
 });
 
 const bounds = (polygons: ReadonlyArray<{ vertices: ReadonlyArray<{ x: number; y: number }> }>) => {
-  const xs = polygons.flatMap((polygon) => polygon.vertices.map((vertex) => vertex.x));
-  const ys = polygons.flatMap((polygon) => polygon.vertices.map((vertex) => vertex.y));
+	const xs = polygons.flatMap((polygon) => polygon.vertices.map((vertex) => vertex.x));
+	const ys = polygons.flatMap((polygon) => polygon.vertices.map((vertex) => vertex.y));
 
-  return {
-    minX: Math.min(...xs),
-    maxX: Math.max(...xs),
-    minY: Math.min(...ys),
-    maxY: Math.max(...ys),
-  };
+	return {
+		minX: Math.min(...xs),
+		maxX: Math.max(...xs),
+		minY: Math.min(...ys),
+		maxY: Math.max(...ys),
+	};
 };
