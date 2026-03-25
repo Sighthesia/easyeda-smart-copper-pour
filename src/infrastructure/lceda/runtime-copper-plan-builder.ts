@@ -52,17 +52,38 @@ const resolveSkeletonSegments = (
 	padNodes: ReturnType<typeof resolveSelectedPadNodes>,
 	request: SmartCopperPourPreviewRequest,
 ): ReadonlyArray<SkeletonSegment> => {
-	switch (request.topologyMode) {
-		case 'tree':
-			return planTreeBackbone(padNodes, { trunkBias: request.trunkBias }).segments;
-		case 'star':
-			return planStarBackbone(padNodes).segments;
-		case 'daisyChain':
-			return planDaisyChainBackbone(padNodes, {
-				trunkStart: request.trunkStart,
-				trunkEnd: request.trunkEnd,
-			}).segments;
-		default:
-			throw new Error(`Unsupported topology mode: ${(request as { topologyMode: string }).topologyMode}`);
+		switch (request.topologyMode) {
+			case 'tree':
+				return planTreeBackbone(padNodes, { trunkBias: request.trunkBias }).segments;
+			case 'star':
+				return planStarBackbone(padNodes, { trunkBias: request.trunkBias }).segments;
+			case 'daisyChain':
+				if (request.trunkMode !== 'manual' && request.trunkMode !== 'auto') {
+					throw new Error('Daisy Chain mode requires trunkMode to be either manual or auto.');
+				}
+
+				if (request.trunkMode === 'manual') {
+					validateManualTrunkPoint(request.trunkStart, 'start');
+					validateManualTrunkPoint(request.trunkEnd, 'end');
+				}
+
+				return request.trunkMode === 'manual'
+					? planDaisyChainBackbone(padNodes, {
+						trunkMode: 'manual',
+						trunkStart: request.trunkStart,
+						trunkEnd: request.trunkEnd,
+					}).segments
+					: planDaisyChainBackbone(padNodes, {
+						trunkMode: 'auto',
+						trunkBias: request.trunkBias,
+					}).segments;
+			default:
+				throw new Error(`Unsupported topology mode: ${(request as { topologyMode: string }).topologyMode}`);
+		}
+	};
+
+const validateManualTrunkPoint = (point: { x: number; y: number } | undefined, endpoint: 'start' | 'end'): void => {
+	if (point === undefined || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+		throw new Error(`Daisy Chain mode requires a valid trunk ${endpoint} point.`);
 	}
 };

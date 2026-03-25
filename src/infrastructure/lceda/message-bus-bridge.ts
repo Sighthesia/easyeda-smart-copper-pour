@@ -65,8 +65,10 @@ export const registerSmartCopperPourMessageBusBridge = (
 			return;
 		}
 
-		void handleSmartCopperPourMessage(controller, message).then((response) => {
-			messageBus.publish(SMART_COPPER_POUR_RESPONSE_TOPIC, response);
+		const requestMessage = message;
+
+		void handleSmartCopperPourMessage(controller, requestMessage).then((responseMessage) => {
+			messageBus.publish(SMART_COPPER_POUR_RESPONSE_TOPIC, responseMessage);
 		});
 	});
 

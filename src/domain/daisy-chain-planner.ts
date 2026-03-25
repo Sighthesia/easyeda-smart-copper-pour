@@ -2,26 +2,37 @@ import type { PadNode } from './pad-node';
 import type { SkeletonPoint, SkeletonSegment } from './skeleton-types';
 import { TopologyMode } from './topology-mode';
 
+export type DaisyChainBackboneTrunkBias = 'neutral' | 'horizontal' | 'vertical';
+
 export interface DaisyChainBackbonePlan {
 	mode: TopologyMode.DaisyChain;
 	segments: SkeletonSegment[];
 }
 
-export interface DaisyChainOptions {
+export interface DaisyChainManualOptions {
+	trunkMode: 'manual';
 	trunkStart: SkeletonPoint;
 	trunkEnd: SkeletonPoint;
 }
+
+export interface DaisyChainAutoOptions {
+	trunkMode: 'auto';
+	trunkBias?: DaisyChainBackboneTrunkBias;
+}
+
+export type DaisyChainOptions = DaisyChainManualOptions | DaisyChainAutoOptions;
 
 export const planDaisyChainBackbone = (
 	pads: ReadonlyArray<PadNode>,
 	options: DaisyChainOptions,
 ): DaisyChainBackbonePlan => {
-	if (pads.length === 0 || isSamePoint(options.trunkStart, options.trunkEnd)) {
+	const trunk = resolveTrunkEndpoints(pads, options);
+	if (pads.length === 0 || isSamePoint(trunk.start, trunk.end)) {
 		return { mode: TopologyMode.DaisyChain, segments: [] };
 	}
 
 	const orderedPads = [...pads]
-		.map((pad) => ({ pad, projection: projectPointToSegment(pad.center, options.trunkStart, options.trunkEnd) }))
+		.map((pad) => ({ pad, projection: projectPointToSegment(pad.center, trunk.start, trunk.end) }))
 		.sort((left, right) => {
 			if (left.projection.distance !== right.projection.distance) {
 				return left.projection.distance - right.projection.distance;
@@ -34,8 +45,8 @@ export const planDaisyChainBackbone = (
 		mode: TopologyMode.DaisyChain,
 		segments: [
 			{
-				start: { ...options.trunkStart },
-				end: { ...options.trunkEnd },
+				start: { ...trunk.start },
+				end: { ...trunk.end },
 				role: 'trunk',
 			},
 			...orderedPads
@@ -48,6 +59,60 @@ export const planDaisyChainBackbone = (
 		],
 	};
 };
+
+const resolveTrunkEndpoints = (
+	pads: ReadonlyArray<PadNode>,
+	options: DaisyChainOptions,
+): { start: SkeletonPoint; end: SkeletonPoint } => {
+	if (options.trunkMode === 'manual') {
+		return {
+			start: options.trunkStart,
+			end: options.trunkEnd,
+		};
+	}
+
+	return buildAutoTrunkEndpoints(pads, options.trunkBias ?? 'neutral');
+};
+
+const buildAutoTrunkEndpoints = (
+	pads: ReadonlyArray<PadNode>,
+	trunkBias: DaisyChainBackboneTrunkBias,
+): { start: SkeletonPoint; end: SkeletonPoint } => {
+	const preferredAxis = resolveAutoTrunkAxis(pads, trunkBias);
+	if (preferredAxis === 'x') {
+		const xValues = pads.map((pad) => pad.center.x);
+		const yAverage = average(pads.map((pad) => pad.center.y));
+		return {
+			start: { x: Math.min(...xValues), y: yAverage },
+			end: { x: Math.max(...xValues), y: yAverage },
+		};
+	}
+
+	const yValues = pads.map((pad) => pad.center.y);
+	const xAverage = average(pads.map((pad) => pad.center.x));
+	return {
+		start: { x: xAverage, y: Math.min(...yValues) },
+		end: { x: xAverage, y: Math.max(...yValues) },
+	};
+};
+
+const resolveAutoTrunkAxis = (pads: ReadonlyArray<PadNode>, trunkBias: DaisyChainBackboneTrunkBias): 'x' | 'y' => {
+	if (trunkBias === 'horizontal') {
+		return 'x';
+	}
+
+	if (trunkBias === 'vertical') {
+		return 'y';
+	}
+
+	const xSpread = calculateSpread(pads.map((pad) => pad.center.x));
+	const ySpread = calculateSpread(pads.map((pad) => pad.center.y));
+	return xSpread >= ySpread ? 'x' : 'y';
+};
+
+const calculateSpread = (values: ReadonlyArray<number>): number => Math.max(...values) - Math.min(...values);
+
+const average = (values: ReadonlyArray<number>): number => values.reduce((sum, value) => sum + value, 0) / values.length;
 
 const projectPointToSegment = (point: SkeletonPoint, start: SkeletonPoint, end: SkeletonPoint) => {
 	const deltaX = end.x - start.x;

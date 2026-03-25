@@ -37,26 +37,33 @@ describe('buildSkeletonOffsetPolygons', () => {
 		});
 	});
 
-	test('strokes connected segments into one rounded polygon by default', () => {
+	test('falls back to bevel corners by default', () => {
 		const polygons = buildSkeletonOffsetPolygons({
 			segments: [createSegment(0, 0, 4, 0), createSegment(4, 0, 4, 3)],
 			width: 2,
 		});
-		const miterPolygons = buildSkeletonOffsetPolygons({
+		const bevelPolygons = buildSkeletonOffsetPolygons({
 			segments: [createSegment(0, 0, 4, 0), createSegment(4, 0, 4, 3)],
 			width: 2,
-			cornerStyle: 'miter',
+			cornerStyle: 'bevel',
+		});
+		const roundPolygons = buildSkeletonOffsetPolygons({
+			segments: [createSegment(0, 0, 4, 0), createSegment(4, 0, 4, 3)],
+			width: 2,
+			cornerStyle: 'round',
 		});
 
 		expect(polygons).toHaveLength(1);
+		expect(bevelPolygons).toHaveLength(1);
+		expect(roundPolygons).toHaveLength(1);
 		expect(getBounds(polygons[0])).toEqual({
 			minX: -1,
 			maxX: 5,
 			minY: -1,
 			maxY: 4,
 		});
-		expect(miterPolygons).toHaveLength(1);
-		expect(polygons[0].vertices.length).toBeGreaterThan(miterPolygons[0].vertices.length);
+		expect(polygons[0].vertices).toEqual(bevelPolygons[0].vertices);
+		expect(polygons[0].vertices.length).toBeLessThan(roundPolygons[0].vertices.length);
 	});
 
 	test('supports explicit bevel corners without splitting the island', () => {

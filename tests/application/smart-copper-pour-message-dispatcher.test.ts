@@ -1,28 +1,69 @@
 import { describe, expect, test } from 'vitest';
 
+import { isSmartCopperPourRequestMessage } from '../../src/application/smart-copper-pour-contract';
 import { handleSmartCopperPourMessage } from '../../src/application/smart-copper-pour-message-dispatcher';
+import { TopologyMode } from '../../src/domain/topology-mode';
 import { SelectionResolutionError } from '../../src/infrastructure/lceda/selection-resolver';
 
 describe('handleSmartCopperPourMessage', () => {
+	test('accepts daisyChain requests with trunkMode auto payloads', () => {
+		expect(
+			isSmartCopperPourRequestMessage({
+				command: 'preview',
+				payload: {
+					topologyMode: TopologyMode.DaisyChain,
+					trunkMode: 'auto',
+					width: 1,
+					keepoutMargin: 0.2,
+				},
+			}),
+		).toBe(true);
+	});
+
+	test('rejects tree requests carrying trunkMode', () => {
+		expect(
+			isSmartCopperPourRequestMessage({
+				command: 'preview',
+				payload: {
+					topologyMode: TopologyMode.Tree,
+					trunkMode: 'auto',
+					width: 1,
+					keepoutMargin: 0.2,
+				},
+			}),
+		).toBe(false);
+	});
+
 	test('returns inspectSelection summary payload', async () => {
 		await expect(
 			handleSmartCopperPourMessage(
 			{
-				inspectSelection: async () => ({ padCount: 2, netName: 'VCC', layerName: 'TopLayer' }),
+				inspectSelection: async () => ({
+					connectionCount: 1,
+					netName: 'VCC',
+					layerName: 'TopLayer',
+					selectionFingerprint: 'fingerprint-1',
+				}),
 				preview: async () => ({ previewToken: null }),
 				apply: async () => ({ applied: false }),
 				clearPreview: async () => ({ cleared: true }),
 			},
-			{ command: 'inspectSelection' },
+			{ command: 'inspectSelection', meta: { sequence: 7 } },
 			),
 		).resolves.toEqual({
 			ok: true,
 			command: 'inspectSelection',
-			payload: { padCount: 2, netName: 'VCC', layerName: 'TopLayer' },
+			payload: {
+				connectionCount: 1,
+				netName: 'VCC',
+				layerName: 'TopLayer',
+				selectionFingerprint: 'fingerprint-1',
+			},
+			meta: { sequence: 7 },
 		});
 	});
 
-	test('preserves actionable selection error codes', async () => {
+	test('preserves actionable selection error codes for inspectSelection failures', async () => {
 		await expect(
 			handleSmartCopperPourMessage(
 			{
@@ -33,7 +74,7 @@ describe('handleSmartCopperPourMessage', () => {
 				apply: async () => ({ applied: false }),
 				clearPreview: async () => ({ cleared: true }),
 			},
-			{ command: 'inspectSelection' },
+			{ command: 'inspectSelection', meta: { sequence: 9 } },
 			),
 		).resolves.toEqual({
 			ok: false,
@@ -42,6 +83,7 @@ describe('handleSmartCopperPourMessage', () => {
 				code: 'selection-empty',
 				message: 'Select at least two pads before running Smart Copper Pour.',
 			},
+			meta: { sequence: 9 },
 		});
 	});
 });

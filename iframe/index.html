@@ -144,7 +144,7 @@
 				<div class="summary">
 					<div><strong>网络</strong><span id="selection-net">加载中...</span></div>
 					<div><strong>层</strong><span id="selection-layer">加载中...</span></div>
-					<div><strong>焊盘</strong><span id="selection-pad-count">0</span></div>
+					<div><strong>节点</strong><span id="selection-pad-count">0</span></div>
 				</div>
 			</section>
 
@@ -163,7 +163,7 @@
 						<select id="corner-style" name="cornerStyle">
 							<option value="round">圆角</option>
 							<option value="miter">斜接</option>
-							<option value="bevel">斜切</option>
+							<option value="bevel" selected>斜切</option>
 						</select>
 					</div>
 					<div>
@@ -211,173 +211,6 @@
 			</div>
 		</div>
 
-		<script>
-			(() => {
-				const REQUEST_TOPIC = 'smart-copper-pour/request';
-				const RESPONSE_TOPIC = 'smart-copper-pour/response';
-				const messageBus = window.parent?.eda?.sys_MessageBus ?? window.eda?.sys_MessageBus;
-				const form = document.getElementById('smart-copper-pour-form');
-				const previewButton = document.getElementById('preview-button');
-				const applyButton = document.getElementById('apply-button');
-				const clearButton = document.getElementById('clear-button');
-				const statusPanel = document.getElementById('status-panel');
-				const selectionNet = document.getElementById('selection-net');
-				const selectionLayer = document.getElementById('selection-layer');
-				const selectionPadCount = document.getElementById('selection-pad-count');
-				const daisyOnlyFields = document.querySelectorAll('[data-daisy-only]');
-				let statusHideTimer = null;
-
-				const hideStatus = () => {
-					statusPanel.hidden = true;
-					statusPanel.textContent = '';
-				};
-
-				const setStatus = (message, tone = 'neutral') => {
-					if (statusHideTimer !== null) {
-						window.clearTimeout(statusHideTimer);
-						statusHideTimer = null;
-					}
-
-					statusPanel.hidden = false;
-					statusPanel.textContent = message;
-					statusPanel.dataset.tone = tone;
-					statusHideTimer = window.setTimeout(() => {
-						hideStatus();
-						statusHideTimer = null;
-					}, 3000);
-				};
-
-				const updateSelectionSummary = (payload) => {
-					selectionNet.textContent = payload.netName ?? 'Unknown';
-					selectionLayer.textContent = payload.layerName ?? 'Unknown';
-					selectionPadCount.textContent = String(payload.padCount);
-				};
-
-				const readFormRequest = () => {
-					const request = {
-						topologyMode: form.topologyMode.value,
-						cornerStyle: form.cornerStyle.value,
-						trunkBias: form.trunkBias.value,
-						width: Number(form.width.value),
-						keepoutMargin: Number(form.keepoutMargin.value),
-					};
-
-					if (request.topologyMode === 'daisyChain') {
-						request.trunkStart = {
-							x: Number(form.trunkStartX.value),
-							y: Number(form.trunkStartY.value),
-						};
-						request.trunkEnd = {
-							x: Number(form.trunkEndX.value),
-							y: Number(form.trunkEndY.value),
-						};
-
-						if (
-							!Number.isFinite(request.trunkStart.x) ||
-							!Number.isFinite(request.trunkStart.y) ||
-							!Number.isFinite(request.trunkEnd.x) ||
-							!Number.isFinite(request.trunkEnd.y)
-						) {
-							setStatus('菊链模式需要有效的主干坐标。', 'error');
-							return null;
-						}
-					}
-
-					if (!Number.isFinite(request.width) || request.width <= 0) {
-						setStatus('宽度必须大于 0。', 'error');
-						return null;
-					}
-
-					if (!Number.isFinite(request.keepoutMargin) || request.keepoutMargin < 0) {
-						setStatus('避让边距必须大于等于 0。', 'error');
-						return null;
-					}
-
-					return request;
-				};
-
-				const publishRequest = (message) => {
-					if (!messageBus) {
-						setStatus('当前 iframe 中无法访问 LCEDA 消息总线。', 'error');
-						return;
-					}
-
-					messageBus.publish(REQUEST_TOPIC, message);
-				};
-
-				const syncModeVisibility = () => {
-					const isDaisyChainMode = form.topologyMode.value === 'daisyChain';
-					daisyOnlyFields.forEach((element) => {
-						element.hidden = !isDaisyChainMode;
-					});
-				};
-
-				const handlePreview = () => {
-					const payload = readFormRequest();
-					if (!payload) {
-						return;
-					}
-
-					setStatus('正在生成预览...', 'neutral');
-					publishRequest({ command: 'preview', payload });
-				};
-
-				const handleApply = () => {
-					const payload = readFormRequest();
-					if (!payload) {
-						return;
-					}
-
-					setStatus('正在应用铜皮...', 'neutral');
-					publishRequest({ command: 'apply', payload });
-				};
-
-				const handleClear = () => {
-					setStatus('正在清除预览...', 'neutral');
-					publishRequest({ command: 'clearPreview' });
-				};
-
-				const responseTask = messageBus?.subscribe(RESPONSE_TOPIC, (message) => {
-					if (!message || typeof message !== 'object' || !('command' in message) || !('ok' in message)) {
-						return;
-					}
-
-					if (message.ok === false) {
-						setStatus(message.error?.message ?? '智能铜皮生成失败。', 'error');
-						return;
-					}
-
-					switch (message.command) {
-						case 'inspectSelection':
-							updateSelectionSummary(message.payload);
-							setStatus('已准备好选择。请调整参数后预览。', 'success');
-							break;
-						case 'preview':
-							setStatus('预览已更新。', 'success');
-							break;
-						case 'apply':
-							setStatus(message.payload.applied ? '铜皮已成功应用。' : '未生成铜皮。', 'success');
-							break;
-						case 'clearPreview':
-							setStatus('预览已清除。', 'success');
-							break;
-						default:
-							setStatus('收到未知的智能铜皮生成响应。', 'error');
-					}
-				});
-
-				previewButton.addEventListener('click', handlePreview);
-				applyButton.addEventListener('click', handleApply);
-				clearButton.addEventListener('click', handleClear);
-				form.topologyMode.addEventListener('change', syncModeVisibility);
-				window.addEventListener('beforeunload', () => {
-					responseTask?.cancel?.();
-				});
-
-				syncModeVisibility();
-				setStatus('等待选择摘要。');
-				publishRequest({ command: 'inspectSelection' });
-			})();
-		</script>
+		<script type="module" src="./app.js"></script>
 	</body>
 </html>

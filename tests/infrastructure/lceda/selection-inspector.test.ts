@@ -1,20 +1,369 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 
-import { createSmartCopperPourSelectionInspector } from '../../../src/infrastructure/lceda/selection-inspector';
+import { createLcedaSelectedPrimitivesReader, createSmartCopperPourSelectionInspector } from '../../../src/infrastructure/lceda/selection-inspector';
+
+const edaGlobal = globalThis as typeof globalThis & {
+	eda?: {
+		pcb_SelectControl: {
+			getAllSelectedPrimitives: () => Promise<unknown>;
+		};
+	};
+};
+
+const originalEda = edaGlobal.eda;
+
+afterEach(() => {
+	edaGlobal.eda = originalEda;
+});
+
+const createBasePrimitive = (id: string) => ({
+	getState_PrimitiveId: () => id,
+});
+
+const createSupportedViaPrimitive = () =>
+	({
+		...createBasePrimitive('via-1'),
+		getState_X: () => 10,
+		getState_Y: () => 20,
+		getState_Net: () => 'VCC',
+		getState_StartLayer: () => 'TopLayer',
+		getState_EndLayer: () => 'BottomLayer',
+		getState_Diameter: () => 1.6,
+	}) as unknown;
+
+const createUnsupportedViaPrimitive = () =>
+	({
+		...createBasePrimitive('via-unsupported-1'),
+		getState_X: () => 10,
+		getState_Y: () => 20,
+		getState_Net: () => 'VCC',
+		getState_StartLayer: () => 'TopLayer',
+		getState_EndLayer: () => undefined,
+	}) as unknown;
+
+const createInvalidCoordinateViaPrimitive = () =>
+	({
+		...createBasePrimitive('via-invalid-1'),
+		getState_X: () => Number.NaN,
+		getState_Y: () => 20,
+		getState_Net: () => 'VCC',
+		getState_StartLayer: () => 'TopLayer',
+		getState_EndLayer: () => 'BottomLayer',
+		getState_Diameter: () => 1.6,
+	}) as unknown;
+
+const createMissingDiameterViaPrimitive = () =>
+	({
+		...createBasePrimitive('via-missing-diameter-1'),
+		getState_X: () => 10,
+		getState_Y: () => 20,
+		getState_Net: () => 'VCC',
+		getState_StartLayer: () => 'TopLayer',
+		getState_EndLayer: () => 'BottomLayer',
+	}) as unknown;
+
+const createInvalidCoordinatePadPrimitive = () =>
+	({
+		...createBasePrimitive('pad-invalid-1'),
+		getState_X: () => Number.NaN,
+		getState_Y: () => 34,
+		getState_Layer: () => 'TopLayer',
+		getState_Net: () => 'VCC',
+		getState_Pad: () => ['ELLIPSE', 6, 4],
+		getState_Hole: () => ['ROUND', 2, 2],
+	}) as unknown;
+
+const createMethodCollisionPrimitive = () =>
+	({
+		...createBasePrimitive('collision-1'),
+		getState_StartLayer: () => 'TopLayer',
+	}) as unknown;
+
+const createPadPrimitive = (layer: unknown = 'TopLayer') =>
+	({
+		...createBasePrimitive('pad-runtime-1'),
+		getState_X: () => 12,
+		getState_Y: () => 34,
+		getState_Layer: () => layer,
+		getState_Net: () => 'VCC',
+		getState_Pad: () => ['ELLIPSE', 6, 4],
+		getState_Hole: () => ['ROUND', 2, 2],
+	}) as unknown;
+
+const createOtherPrimitive = () => createBasePrimitive('track-1') as unknown;
 
 describe('createSmartCopperPourSelectionInspector', () => {
 	test('summarizes normalized same-net pads', async () => {
 		const inspector = createSmartCopperPourSelectionInspector({
 			readSelectedPrimitives: async () => [
-				{ id: 'pad-1', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 1, y: 2, padRadius: 1 },
-				{ id: 'pad-2', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 3, y: 4, padRadius: 1.2 },
+				{ id: 'pad-1', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 1, y: 2, width: null, height: null, padRadius: 1, holeRadius: null },
+				{ id: 'pad-2', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 3, y: 4, width: null, height: null, padRadius: 1.2, holeRadius: null },
 			],
 		});
 
-		await expect(inspector.inspectSelection()).resolves.toEqual({
-			padCount: 2,
+		const summary = await inspector.inspectSelection();
+
+		expect(summary).toMatchObject({
+			connectionCount: 2,
 			netName: 'VCC',
 			layerName: 'TopLayer',
 		});
+		expect(summary.selectionFingerprint).toEqual(expect.any(String));
+		expect(summary.selectionFingerprint).toContain('"id":"pad-1"');
+		expect(summary.selectionFingerprint).toContain('"id":"pad-2"');
+		expect(summary.selectionFingerprint).toContain('"net":"VCC"');
+	});
+
+	test('includes via nodes in connectionCount when the selection includes a via', async () => {
+		const inspector = createSmartCopperPourSelectionInspector({
+			readSelectedPrimitives: async () => [
+				{ id: 'pad-1', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 1, y: 2, width: null, height: null, padRadius: 1, holeRadius: null },
+				{ id: 'via-1', type: 'VIA', net: 'VCC', x: 3, y: 4, layerSpan: { startLayer: 'TopLayer', endLayer: 'BottomLayer' }, padRadius: 0.8 },
+			],
+		});
+
+		const summary = await inspector.inspectSelection();
+
+		expect(summary).toMatchObject({
+			connectionCount: 2,
+			netName: 'VCC',
+			layerName: 'TopLayer',
+		});
+		expect(summary.selectionFingerprint).toEqual(expect.any(String));
+		expect(summary.selectionFingerprint).toContain('"id":"pad-1"');
+		expect(summary.selectionFingerprint).toContain('"id":"via-1"');
+		expect(summary.selectionFingerprint).toContain('"effectiveRadius":0.8');
+	});
+
+	test('rejects invalid-coordinate pads instead of silently dropping them from padCount', async () => {
+		const inspector = createSmartCopperPourSelectionInspector({
+			readSelectedPrimitives: async () => [
+				{ id: 'pad-1', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 1, y: 2, width: null, height: null, padRadius: 1, holeRadius: null },
+				{ id: 'pad-invalid', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: Number.NaN, y: 4, width: null, height: null, padRadius: 1.2, holeRadius: null },
+				{ id: 'via-1', type: 'VIA', net: 'VCC', x: 3, y: 4, layerSpan: { startLayer: 'TopLayer', endLayer: 'BottomLayer' }, padRadius: 0.8 },
+			],
+		});
+
+		await expect(inspector.inspectSelection()).rejects.toMatchObject({
+			code: 'selection-pad-invalid',
+			message: 'Pad pad-invalid is missing supported metadata.',
+		});
+	});
+
+	test('rejects invalid via coordinates instead of silently ignoring the via', async () => {
+		const inspector = createSmartCopperPourSelectionInspector({
+			readSelectedPrimitives: async () => [
+				{ id: 'pad-1', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 1, y: 2, width: null, height: null, padRadius: 1, holeRadius: null },
+				{ id: 'via-1', type: 'VIA', net: 'VCC', x: Number.NaN, y: 4, layerSpan: { startLayer: 'TopLayer', endLayer: 'BottomLayer' }, padRadius: 0.8 },
+			],
+		});
+
+		await expect(inspector.inspectSelection()).rejects.toMatchObject({
+			code: 'selection-via-unsupported',
+			message: 'Via via-1 is missing supported metadata.',
+		});
+	});
+
+	test('rejects an invalid via layer span instead of silently ignoring the via', async () => {
+		const inspector = createSmartCopperPourSelectionInspector({
+			readSelectedPrimitives: async () => [
+				{ id: 'pad-1', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 1, y: 2, width: null, height: null, padRadius: 1, holeRadius: null },
+				({ id: 'via-1', type: 'VIA', net: 'VCC', x: 3, y: 4, layerSpan: null, padRadius: 0.8 } as unknown as never),
+			],
+		});
+
+		await expect(inspector.inspectSelection()).rejects.toMatchObject({
+			code: 'selection-via-unsupported',
+			message: 'Via via-1 is missing supported metadata.',
+		});
+	});
+
+	test('maps supported via primitives to VIA with a readable layer span', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => [createSupportedViaPrimitive()],
+			},
+		};
+
+		const reader = createLcedaSelectedPrimitivesReader();
+
+		await expect(reader.readSelectedPrimitives()).resolves.toEqual([
+			{
+				id: 'via-1',
+				type: 'VIA',
+				net: 'VCC',
+				x: 10,
+				y: 20,
+				layerSpan: {
+					startLayer: 'TopLayer',
+					endLayer: 'BottomLayer',
+				},
+				padRadius: 0.8,
+			},
+		]);
+	});
+
+	test('maps unsupported via primitives to VIA_UNSUPPORTED instead of OTHER', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => [createUnsupportedViaPrimitive()],
+			},
+		};
+
+		const reader = createLcedaSelectedPrimitivesReader();
+
+		await expect(reader.readSelectedPrimitives()).resolves.toEqual([
+			{
+				id: 'via-unsupported-1',
+				type: 'VIA_UNSUPPORTED',
+				net: 'VCC',
+				x: 10,
+				y: 20,
+			},
+		]);
+	});
+
+	test('keeps missing-diameter via primitives as VIA_UNSUPPORTED instead of VIA', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => [createMissingDiameterViaPrimitive()],
+			},
+		};
+
+		const reader = createLcedaSelectedPrimitivesReader();
+
+		await expect(reader.readSelectedPrimitives()).resolves.toEqual([
+			{
+				id: 'via-missing-diameter-1',
+				type: 'VIA_UNSUPPORTED',
+				net: 'VCC',
+				x: 10,
+				y: 20,
+			},
+		]);
+	});
+
+	test('keeps invalid-coordinate via primitives as VIA_UNSUPPORTED instead of OTHER', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => [createInvalidCoordinateViaPrimitive()],
+			},
+		};
+
+		const reader = createLcedaSelectedPrimitivesReader();
+
+		await expect(reader.readSelectedPrimitives()).resolves.toEqual([
+			{
+				id: 'via-invalid-1',
+				type: 'VIA_UNSUPPORTED',
+				net: 'VCC',
+				x: Number.NaN,
+				y: 20,
+			},
+		]);
+	});
+
+	test('keeps non-pad non-via primitives as OTHER', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => [createOtherPrimitive()],
+			},
+		};
+
+		const reader = createLcedaSelectedPrimitivesReader();
+
+		await expect(reader.readSelectedPrimitives()).resolves.toEqual([
+			{
+				id: 'track-1',
+				type: 'OTHER',
+			},
+		]);
+	});
+
+	test('does not classify a single similar method name collision as VIA_UNSUPPORTED', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => [createMethodCollisionPrimitive()],
+			},
+		};
+
+		const reader = createLcedaSelectedPrimitivesReader();
+
+		await expect(reader.readSelectedPrimitives()).resolves.toEqual([
+			{
+				id: 'collision-1',
+				type: 'OTHER',
+			},
+		]);
+	});
+
+	test('maps raw LCEDA pad primitives to PAD selection metadata', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => [createPadPrimitive()],
+			},
+		};
+
+		const reader = createLcedaSelectedPrimitivesReader();
+
+		await expect(reader.readSelectedPrimitives()).resolves.toEqual([
+			{
+				id: 'pad-runtime-1',
+				type: 'PAD',
+				net: 'VCC',
+				layer: 'TopLayer',
+				x: 12,
+				y: 34,
+				width: 6,
+				height: 4,
+				padRadius: 3,
+				holeRadius: 1,
+			},
+		]);
+	});
+
+	test('does not downgrade invalid-coordinate pads to OTHER in the reader path', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => [createInvalidCoordinatePadPrimitive(), createPadPrimitive()],
+			},
+		};
+
+		const inspector = createSmartCopperPourSelectionInspector(createLcedaSelectedPrimitivesReader());
+
+		await expect(inspector.inspectSelection()).rejects.toMatchObject({
+			code: 'selection-pad-invalid',
+			message: 'Pad pad-invalid-1 is missing supported metadata.',
+		});
+	});
+
+	test('treats unusable pad layer metadata as null instead of coercing arbitrary values', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => [createPadPrimitive({ kind: 'TopLayer' })],
+			},
+		};
+
+		const reader = createLcedaSelectedPrimitivesReader();
+
+		await expect(reader.readSelectedPrimitives()).resolves.toEqual([
+			expect.objectContaining({
+				id: 'pad-runtime-1',
+				type: 'PAD',
+				layer: null,
+			}),
+		]);
+	});
+
+	test('throws a clear runtime error when selected primitives cannot be read as an array', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => undefined,
+			},
+		};
+
+		const reader = createLcedaSelectedPrimitivesReader();
+
+		await expect(reader.readSelectedPrimitives()).rejects.toThrow('LCEDA selected primitives API returned an unusable result.');
 	});
 });
