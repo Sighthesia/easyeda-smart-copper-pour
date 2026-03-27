@@ -173,3 +173,24 @@ Smart Copper Pour is an LCEDA Pro PCB extension that previews and applies copper
 - Menu visibility is currently PCB-only; avoid reintroducing misleading `home` or `sch` groups unless requested
 - Build success does not guarantee commit-hook success; pre-commit also runs lint-staged fixes
 - LCEDA `Region` / `Pour` APIs are BETA-sensitive, so runtime code should remain conservative and explicit
+  <!-- TRELLIS:START -->
+
+# Trellis Instructions
+
+These instructions are for AI assistants working in this project.
+
+Use the `/trellis:start` command when starting a new session to:
+
+- Initialize your developer identity
+- Understand current project context
+- Read relevant guidelines
+
+Use `@/.trellis/` to learn:
+
+- Development workflow (`workflow.md`)
+- Project structure guidelines (`spec/`)
+- Developer workspace (`workspace/`)
+
+Keep this managed block so 'trellis update' can refresh the instructions.
+
+<!-- TRELLIS:END -->
