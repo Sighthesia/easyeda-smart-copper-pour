@@ -69,7 +69,7 @@ Examples:
 
 - `src/application/smart-copper-pour-contract.ts` defines `SmartCopperPourFailureMessage`
 - `tests/infrastructure/lceda/message-bus-bridge.test.ts` verifies failed controller calls publish `{ ok: false, error: ... }`
-- `iframe/app.js` reads `message.error?.message` and updates the status panel
+- `src/iframe/index.ts` reads runtime errors and updates the status panel
 
 ---
 

@@ -16,7 +16,7 @@ This repository has **no database layer**.
 State is transient and runtime-scoped:
 
 - controller state such as `latestPreviewToken` lives in memory during a session
-- iframe state lives in `iframe/app.js`
+- iframe state lives in `src/iframe/index.ts`
 - durable storage, if any, is outside this repository and handled by EasyEDA itself
 
 ---

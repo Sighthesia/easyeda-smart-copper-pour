@@ -68,4 +68,4 @@ Examples:
 - Avoid `any` in TypeScript modules
 - Avoid broad string payloads where a union already exists
 - Avoid unchecked type assertions for iframe messages coming from unknown runtime inputs
-- Avoid duplicating contract types in `iframe/app.js`; prefer alignment with `src/application/` definitions and tests
+- Avoid duplicating contract types in `src/iframe/`; prefer alignment with `src/application/` definitions and tests

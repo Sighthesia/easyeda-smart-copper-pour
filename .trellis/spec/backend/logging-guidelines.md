@@ -25,7 +25,7 @@ Current diagnostic channels are:
 
 - thrown `Error` messages from runtime adapters
 - failure envelopes on the message bus
-- iframe status updates in `iframe/app.js`
+- iframe status updates in `src/iframe/index.ts`
 
 ---
 
@@ -37,7 +37,7 @@ Examples of the current approach:
 
 - `src/infrastructure/lceda/runtime-copper-plan-builder.ts` throws exact runtime messages instead of logging and continuing
 - `src/infrastructure/lceda/message-bus-bridge.ts` publishes dispatcher responses directly; it does not log bus traffic
-- `iframe/app.js` sets visible status text such as failure and success messages for the user
+- `src/iframe/index.ts` sets visible status text such as failure and success messages for the user
 
 If you need temporary debugging, keep it local and remove it before finishing unless the repository adopts a real logging approach.
 
