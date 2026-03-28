@@ -27,8 +27,8 @@ const createSupportedViaPrimitive = () =>
 		getState_X: () => 10,
 		getState_Y: () => 20,
 		getState_Net: () => 'VCC',
-		getState_StartLayer: () => 'TopLayer',
-		getState_EndLayer: () => 'BottomLayer',
+		getState_StartLayer: () => 1,
+		getState_EndLayer: () => 2,
 		getState_Diameter: () => 1.6,
 	}) as unknown;
 
@@ -38,7 +38,7 @@ const createUnsupportedViaPrimitive = () =>
 		getState_X: () => 10,
 		getState_Y: () => 20,
 		getState_Net: () => 'VCC',
-		getState_StartLayer: () => 'TopLayer',
+		getState_StartLayer: () => 1,
 		getState_EndLayer: () => undefined,
 	}) as unknown;
 
@@ -48,8 +48,8 @@ const createInvalidCoordinateViaPrimitive = () =>
 		getState_X: () => Number.NaN,
 		getState_Y: () => 20,
 		getState_Net: () => 'VCC',
-		getState_StartLayer: () => 'TopLayer',
-		getState_EndLayer: () => 'BottomLayer',
+		getState_StartLayer: () => 1,
+		getState_EndLayer: () => 2,
 		getState_Diameter: () => 1.6,
 	}) as unknown;
 
@@ -59,8 +59,8 @@ const createMissingDiameterViaPrimitive = () =>
 		getState_X: () => 10,
 		getState_Y: () => 20,
 		getState_Net: () => 'VCC',
-		getState_StartLayer: () => 'TopLayer',
-		getState_EndLayer: () => 'BottomLayer',
+		getState_StartLayer: () => 1,
+		getState_EndLayer: () => 2,
 	}) as unknown;
 
 const createInvalidCoordinatePadPrimitive = () =>
@@ -68,7 +68,7 @@ const createInvalidCoordinatePadPrimitive = () =>
 		...createBasePrimitive('pad-invalid-1'),
 		getState_X: () => Number.NaN,
 		getState_Y: () => 34,
-		getState_Layer: () => 'TopLayer',
+		getState_Layer: () => 1,
 		getState_Net: () => 'VCC',
 		getState_Pad: () => ['ELLIPSE', 6, 4],
 		getState_Hole: () => ['ROUND', 2, 2],
@@ -77,7 +77,7 @@ const createInvalidCoordinatePadPrimitive = () =>
 const createMethodCollisionPrimitive = () =>
 	({
 		...createBasePrimitive('collision-1'),
-		getState_StartLayer: () => 'TopLayer',
+		getState_StartLayer: () => 1,
 	}) as unknown;
 
 const createOtherPrimitive = () => createBasePrimitive('track-1') as unknown;
@@ -102,6 +102,52 @@ describe('createSmartCopperPourSelectionInspector', () => {
 		expect(summary.selectionFingerprint).toContain('"id":"pad-1"');
 		expect(summary.selectionFingerprint).toContain('"id":"pad-2"');
 		expect(summary.selectionFingerprint).toContain('"net":"VCC"');
+	});
+
+	test('summarizes a single selected pad instead of waiting for two pads', async () => {
+		const inspector = createSmartCopperPourSelectionInspector({
+			readSelectedPrimitives: async () => [
+				{ id: 'pad-1', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 1, y: 2, width: null, height: null, padRadius: 1, holeRadius: null },
+			],
+		});
+
+		await expect(inspector.inspectSelection()).resolves.toEqual({
+			connectionCount: 1,
+			layerName: 'TopLayer',
+			netName: 'VCC',
+			selectionFingerprint: JSON.stringify([
+				{
+					center: { x: 1, y: 2 },
+					effectiveRadius: 1,
+					id: 'pad-1',
+					layer: 'TopLayer',
+					net: 'VCC',
+				},
+			]),
+		});
+	});
+
+	test('summarizes a single selected via and includes it in connectionCount', async () => {
+		const inspector = createSmartCopperPourSelectionInspector({
+			readSelectedPrimitives: async () => [
+				{ id: 'via-1', type: 'VIA', net: 'VCC', x: 3, y: 4, layerSpan: { startLayer: 'TopLayer', endLayer: 'BottomLayer' }, padRadius: 0.8 },
+			],
+		});
+
+		await expect(inspector.inspectSelection()).resolves.toEqual({
+			connectionCount: 1,
+			layerName: 'TopLayer',
+			netName: 'VCC',
+			selectionFingerprint: JSON.stringify([
+				{
+					center: { x: 3, y: 4 },
+					effectiveRadius: 0.8,
+					id: 'via-1',
+					layer: 'TopLayer',
+					net: 'VCC',
+				},
+			]),
+		});
 	});
 
 	test('includes via nodes in connectionCount when the selection includes a via', async () => {
@@ -432,6 +478,24 @@ describe('createSmartCopperPourSelectionInspector', () => {
 		edaGlobal.eda = {
 			pcb_SelectControl: {
 				getAllSelectedPrimitives: async () => [createPadPrimitive({ layer: { kind: 'TopLayer' } })],
+			},
+		};
+
+		const reader = createLcedaSelectedPrimitivesReader();
+
+		await expect(reader.readSelectedPrimitives()).resolves.toEqual([
+			expect.objectContaining({
+				id: 'pad-runtime-1',
+				type: 'PAD',
+				layer: null,
+			}),
+		]);
+	});
+
+	test('treats unsupported runtime inner pad layers as null instead of passing through invalid names', async () => {
+		edaGlobal.eda = {
+			pcb_SelectControl: {
+				getAllSelectedPrimitives: async () => [createPadPrimitive({ layer: 45 })],
 			},
 		};
 

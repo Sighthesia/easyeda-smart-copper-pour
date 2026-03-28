@@ -1,32 +1,27 @@
 import type { SkeletonPolygon } from '../../domain/skeleton-types';
-import type {
-	LcedaPourObjectInput,
-	LcedaPourObjectRef,
-	LcedaPourObjectStore,
-	LcedaPreviewObjectRef,
-	LcedaStoredObjectRef,
-} from './pour-writer';
+import { isSupportedLcedaCopperLayerId } from './layer-name';
+import type { LcedaPourObjectInput, LcedaPourObjectRef, LcedaPourObjectStore, LcedaPreviewObjectRef, LcedaStoredObjectRef } from './pour-writer';
 
-type LcedaRegionPrimitive = {
+interface LcedaRegionPrimitive {
 	getState_PrimitiveId?: () => string;
 	primitiveId?: string;
-};
+}
 
 type LcedaPourPrimitive = LcedaRegionPrimitive;
 
-type RuntimeLcedaStoreApi = {
+interface RuntimeLcedaStoreApi {
 	pcb_MathPolygon: {
-		createPolygon(polygon: TPCB_PolygonSourceArray): IPCB_Polygon | undefined;
+		createPolygon: (polygon: TPCB_PolygonSourceArray) => IPCB_Polygon | undefined;
 	};
 	pcb_PrimitiveRegion: {
-		create(layer: TPCB_LayersOfRegion, complexPolygon: IPCB_Polygon): Promise<LcedaRegionPrimitive | undefined>;
-		delete(primitiveIds: Array<string>): Promise<boolean>;
+		create: (layer: TPCB_LayersOfRegion, complexPolygon: IPCB_Polygon) => Promise<LcedaRegionPrimitive | undefined>;
+		delete: (primitiveIds: Array<string>) => Promise<boolean>;
 	};
 	pcb_PrimitivePour: {
-		create(net: string, layer: TPCB_LayersOfCopper, complexPolygon: IPCB_Polygon): Promise<LcedaPourPrimitive | undefined>;
-		delete(primitiveIds: Array<string>): Promise<boolean>;
+		create: (net: string, layer: TPCB_LayersOfCopper, complexPolygon: IPCB_Polygon) => Promise<LcedaPourPrimitive | undefined>;
+		delete: (primitiveIds: Array<string>) => Promise<boolean>;
 	};
-};
+}
 
 const getLcedaApi = (): RuntimeLcedaStoreApi => eda as RuntimeLcedaStoreApi;
 
@@ -50,7 +45,10 @@ export const createRuntimeLcedaPolygon = (polygon: SkeletonPolygon): IPCB_Polygo
 		return encodedPolygon === undefined ? undefined : getLcedaApi().pcb_MathPolygon.createPolygon(encodedPolygon);
 	})();
 
-const toStoredObjectRef = <K extends 'region' | 'pour'>(kind: K, primitive: LcedaRegionPrimitive | LcedaPourPrimitive): LcedaStoredObjectRef<K> | undefined => {
+const toStoredObjectRef = <K extends 'region' | 'pour'>(
+	kind: K,
+	primitive: LcedaRegionPrimitive | LcedaPourPrimitive,
+): LcedaStoredObjectRef<K> | undefined => {
 	const primitiveId = primitive.getState_PrimitiveId?.() ?? primitive.primitiveId;
 	if (typeof primitiveId !== 'string' || primitiveId.length === 0 || primitiveId !== primitiveId.trim()) {
 		return undefined;
@@ -85,7 +83,15 @@ const createRuntimeStoredObject = async <K extends 'region' | 'pour'>(options: {
 	return requireStoredObjectRef(options.kind, primitive, options.failureMessage);
 };
 
+const requireSupportedCopperLayerInput = (input: LcedaPourObjectInput): void => {
+	if (!isSupportedLcedaCopperLayerId(input.layerId)) {
+		throw new Error(`Unsupported copper layer: ${input.layerName} (${input.layerId})`);
+	}
+};
+
 export const createRuntimePreviewRegion = async (input: LcedaPourObjectInput): Promise<LcedaPreviewObjectRef | undefined> => {
+	requireSupportedCopperLayerInput(input);
+
 	const complexPolygon = createRuntimeLcedaPolygon(input.polygon);
 	if (complexPolygon === undefined) {
 		return undefined;
@@ -94,11 +100,13 @@ export const createRuntimePreviewRegion = async (input: LcedaPourObjectInput): P
 	return createRuntimeStoredObject({
 		kind: 'region',
 		failureMessage: 'Preview region primitive id was not created.',
-		create: () => getLcedaApi().pcb_PrimitiveRegion.create(input.layerName as TPCB_LayersOfRegion, complexPolygon),
+		create: () => getLcedaApi().pcb_PrimitiveRegion.create(input.layerId as TPCB_LayersOfRegion, complexPolygon),
 	});
 };
 
 export const createRuntimeFinalPour = async (input: LcedaPourObjectInput): Promise<LcedaPourObjectRef | undefined> => {
+	requireSupportedCopperLayerInput(input);
+
 	const complexPolygon = createRuntimeLcedaPolygon(input.polygon);
 	if (complexPolygon === undefined) {
 		return undefined;
@@ -107,7 +115,7 @@ export const createRuntimeFinalPour = async (input: LcedaPourObjectInput): Promi
 	return createRuntimeStoredObject({
 		kind: 'pour',
 		failureMessage: 'Final pour primitive id was not created.',
-		create: () => getLcedaApi().pcb_PrimitivePour.create(input.netName, input.layerName as TPCB_LayersOfCopper, complexPolygon),
+		create: () => getLcedaApi().pcb_PrimitivePour.create(input.netName, input.layerId as TPCB_LayersOfCopper, complexPolygon),
 	});
 };
 

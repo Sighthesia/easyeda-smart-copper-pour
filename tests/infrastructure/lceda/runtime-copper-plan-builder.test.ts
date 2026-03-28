@@ -131,6 +131,25 @@ describe('createRuntimeCopperPlanBuilder', () => {
 		expect(bounds(result.polygons).maxY).toBeGreaterThan(4);
 	});
 
+	test('maps Inner30 to the last supported EasyEDA inner layer id', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([createPad({ id: 'pad-a', x: 0, y: 0, layer: 'Inner30' }), createPad({ id: 'pad-b', x: 4, y: 0, layer: 'Inner30' })]),
+		);
+
+		const result = await builder.buildWriterInput(createTreeRequest());
+
+		expect(result.layerName).toBe('Inner30');
+		expect(result.layerId).toBe(44);
+	});
+
+	test('rejects unsupported inner layers before creating writer input', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([createPad({ id: 'pad-a', x: 0, y: 0, layer: 'Inner31' }), createPad({ id: 'pad-b', x: 4, y: 0, layer: 'Inner31' })]),
+		);
+
+		await expect(builder.buildWriterInput(createTreeRequest())).rejects.toThrow('Unsupported copper layer: Inner31');
+	});
+
 	test('builds tree polygons from a component-expanded selection through the default reader path', async () => {
 		edaGlobal.eda = {
 			pcb_SelectControl: {

@@ -4,7 +4,8 @@ import type { SkeletonPolygon, SkeletonSegment } from '../../domain/skeleton-typ
 import { planStarBackbone } from '../../domain/star-backbone-planner';
 import { planTreeBackbone } from '../../domain/tree-backbone-planner';
 import { buildSkeletonOffsetPolygons } from '../geometry/polygon-offset-builder';
-import { type LcedaSelectedPrimitivesReader, createLcedaSelectedPrimitivesReader } from './selection-inspector';
+import { isSupportedLcedaCopperLayerId, toLcedaLayerId } from './layer-name';
+import { type LcedaSelectedPrimitivesReader, createLcedaSelectedPrimitivesReader, normalizeSelectedSnapshotPrimitives } from './selection-inspector';
 import { resolveSelectedPadNodes } from './selection-resolver';
 
 /**
@@ -13,6 +14,7 @@ import { resolveSelectedPadNodes } from './selection-resolver';
  * @public
  */
 export interface RuntimeCopperWriterInput {
+	layerId: number;
 	layerName: string;
 	netName: string;
 	polygons: readonly SkeletonPolygon[];
@@ -31,7 +33,10 @@ export const createRuntimeCopperPlanBuilder = (
 	reader: LcedaSelectedPrimitivesReader = createLcedaSelectedPrimitivesReader(),
 ): RuntimeCopperPlanBuilder => ({
 	buildWriterInput: async (request: SmartCopperPourPreviewRequest): Promise<RuntimeCopperWriterInput> => {
-		const selectedPrimitives = await reader.readSelectedPrimitives();
+		const selectedPrimitives =
+			request.selectionPrimitives !== undefined
+				? normalizeSelectedSnapshotPrimitives(request.selectionPrimitives)
+				: await reader.readSelectedPrimitives();
 		const padNodes = resolveSelectedPadNodes(selectedPrimitives);
 		const segments = resolveSkeletonSegments(padNodes, request);
 		const polygons = buildSkeletonOffsetPolygons({
@@ -39,9 +44,15 @@ export const createRuntimeCopperPlanBuilder = (
 			width: request.width,
 			cornerStyle: request.cornerStyle,
 		});
+		const layerName = padNodes[0].layer;
+		const layerId = toLcedaLayerId(layerName);
+		if (layerId === null || !isSupportedLcedaCopperLayerId(layerId)) {
+			throw new Error(`Unsupported copper layer: ${layerName}`);
+		}
 
 		return {
-			layerName: padNodes[0].layer,
+			layerId,
+			layerName,
 			netName: padNodes[0].net,
 			polygons,
 		};

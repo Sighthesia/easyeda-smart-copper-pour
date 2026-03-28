@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { SkeletonPolygon } from '../../../src/domain/skeleton-types';
 import {
-	createRuntimeLcedaPourObjectStore,
-	createRuntimeLcedaPolygon,
 	createRuntimeFinalPour,
+	createRuntimeLcedaPolygon,
+	createRuntimeLcedaPourObjectStore,
 	createRuntimePreviewRegion,
 	deleteRuntimeLcedaObject,
 	encodeSkeletonPolygonToPolygonSourceArray,
@@ -57,15 +57,11 @@ describe('runtime-pour-object-store', () => {
 	});
 
 	test('encodes rectangle polygons as closed line commands', () => {
-		expect(encodeSkeletonPolygonToPolygonSourceArray(createRectanglePolygon())).toEqual([
-			0, 0, 'L', 10, 0, 'L', 10, 6, 'L', 0, 6, 'L', 0, 0,
-		]);
+		expect(encodeSkeletonPolygonToPolygonSourceArray(createRectanglePolygon())).toEqual([0, 0, 'L', 10, 0, 'L', 10, 6, 'L', 0, 6, 'L', 0, 0]);
 	});
 
 	test('encodes triangle polygons as closed line commands', () => {
-		expect(encodeSkeletonPolygonToPolygonSourceArray(createTrianglePolygon())).toEqual([
-			0, 0, 'L', 10, 0, 'L', 0, 6, 'L', 0, 0,
-		]);
+		expect(encodeSkeletonPolygonToPolygonSourceArray(createTrianglePolygon())).toEqual([0, 0, 'L', 10, 0, 'L', 0, 6, 'L', 0, 0]);
 	});
 
 	test('returns undefined when polygon creation fails', () => {
@@ -73,9 +69,7 @@ describe('runtime-pour-object-store', () => {
 		api.createPolygon.mockReturnValue(undefined);
 
 		expect(createRuntimeLcedaPolygon(createRectanglePolygon())).toBeUndefined();
-		expect(api.createPolygon).toHaveBeenCalledWith([
-			0, 0, 'L', 10, 0, 'L', 10, 6, 'L', 0, 6, 'L', 0, 0,
-		]);
+		expect(api.createPolygon).toHaveBeenCalledWith([0, 0, 'L', 10, 0, 'L', 10, 6, 'L', 0, 6, 'L', 0, 0]);
 	});
 
 	test('returns undefined when region creation fails', async () => {
@@ -85,12 +79,30 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimePreviewRegion({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
 				polygonIndex: 0,
 			}),
 		).resolves.toBeUndefined();
+	});
+
+	test('rejects unsupported preview layer ids before calling EasyEDA region creation', async () => {
+		const api = createLcedaApi();
+
+		await expect(
+			createRuntimePreviewRegion({
+				layerId: 45,
+				layerName: 'Inner31',
+				netName: 'VCC',
+				polygon: createRectanglePolygon(),
+				polygonIndex: 0,
+			}),
+		).rejects.toThrow('Unsupported copper layer: Inner31 (45)');
+
+		expect(api.createPolygon).not.toHaveBeenCalled();
+		expect(api.regionCreate).not.toHaveBeenCalled();
 	});
 
 	test('returns undefined when pour creation fails', async () => {
@@ -100,12 +112,30 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimeFinalPour({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
 				polygonIndex: 0,
 			}),
 		).resolves.toBeUndefined();
+	});
+
+	test('rejects unsupported pour layer ids before calling EasyEDA pour creation', async () => {
+		const api = createLcedaApi();
+
+		await expect(
+			createRuntimeFinalPour({
+				layerId: 45,
+				layerName: 'Inner31',
+				netName: 'VCC',
+				polygon: createRectanglePolygon(),
+				polygonIndex: 0,
+			}),
+		).rejects.toThrow('Unsupported copper layer: Inner31 (45)');
+
+		expect(api.createPolygon).not.toHaveBeenCalled();
+		expect(api.pourCreate).not.toHaveBeenCalled();
 	});
 
 	test('creates preview regions with region refs', async () => {
@@ -115,6 +145,7 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimePreviewRegion({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
@@ -130,6 +161,7 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimePreviewRegion({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
@@ -145,6 +177,7 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimePreviewRegion({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
@@ -160,6 +193,7 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimePreviewRegion({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
@@ -175,6 +209,7 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimePreviewRegion({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
@@ -190,6 +225,7 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimeFinalPour({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
@@ -205,6 +241,7 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimeFinalPour({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
@@ -220,6 +257,7 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimeFinalPour({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
@@ -235,6 +273,7 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimeFinalPour({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
@@ -250,6 +289,7 @@ describe('runtime-pour-object-store', () => {
 
 		await expect(
 			createRuntimeFinalPour({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygon: createRectanglePolygon(),
@@ -291,9 +331,7 @@ describe('runtime-pour-object-store', () => {
 		const api = createLcedaApi();
 		api.pourDelete.mockResolvedValue(false);
 
-		await expect(deleteRuntimeLcedaObject({ kind: 'pour', primitiveId: 'pour-1' })).rejects.toThrow(
-			'Failed to delete LCEDA pour primitive.',
-		);
+		await expect(deleteRuntimeLcedaObject({ kind: 'pour', primitiveId: 'pour-1' })).rejects.toThrow('Failed to delete LCEDA pour primitive.');
 	});
 
 	test('fails when delete receives an unknown object kind', async () => {
@@ -317,23 +355,31 @@ describe('runtime-pour-object-store', () => {
 
 		const store = createRuntimeLcedaPourObjectStore();
 
-		expect(await store.createPreviewRegion({
-			layerName: 'TopLayer',
-			netName: 'VCC',
-			polygon: createRectanglePolygon(),
-			polygonIndex: 0,
-		})).toEqual({ kind: 'region', primitiveId: 'region-1' });
+		expect(
+			await store.createPreviewRegion({
+				layerId: 1,
+				layerName: 'TopLayer',
+				netName: 'VCC',
+				polygon: createRectanglePolygon(),
+				polygonIndex: 0,
+			}),
+		).toEqual({ kind: 'region', primitiveId: 'region-1' });
 
-		expect(await store.createPour({
-			layerName: 'TopLayer',
-			netName: 'VCC',
-			polygon: createRectanglePolygon(),
-			polygonIndex: 0,
-		})).toEqual({ kind: 'pour', primitiveId: 'pour-1' });
+		expect(
+			await store.createPour({
+				layerId: 1,
+				layerName: 'TopLayer',
+				netName: 'VCC',
+				polygon: createRectanglePolygon(),
+				polygonIndex: 0,
+			}),
+		).toEqual({ kind: 'pour', primitiveId: 'pour-1' });
 
 		await store.deleteObject({ kind: 'region', primitiveId: 'region-1' });
 		await store.deleteObject({ kind: 'pour', primitiveId: 'pour-1' });
 
+		expect(api.regionCreate).toHaveBeenCalledWith(1, { polygon: true });
+		expect(api.pourCreate).toHaveBeenCalledWith('VCC', 1, { polygon: true });
 		expect(api.regionDelete).toHaveBeenCalledWith(['region-1']);
 		expect(api.pourDelete).toHaveBeenCalledWith(['pour-1']);
 	});
