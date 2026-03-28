@@ -3,6 +3,7 @@ import type esbuild from 'esbuild';
 export default {
 	entryPoints: {
 		'index': './src/index',
+		'iframe': './src/iframe/index',
 	},
 	entryNames: '[name]',
 	assetNames: '[name]',

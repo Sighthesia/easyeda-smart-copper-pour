@@ -1,0 +1,141 @@
+:root {
+	color-scheme: light;
+	font-family: 'Noto Sans SC', 'PingFang SC', sans-serif;
+	line-height: 1.4;
+	--panel-bg: #f7f8fa;
+	--card-bg: #ffffff;
+	--card-border: #d8dee8;
+	--field-border: #c5cfdb;
+	--text-primary: #1f2937;
+	--text-muted: #526071;
+	--status-neutral: #eef2f7;
+	--status-success-bg: #e8f7ea;
+	--status-success-text: #216e39;
+	--status-error-bg: #fdecec;
+	--status-error-text: #a12626;
+}
+
+body {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	margin: 0;
+	padding: 16px;
+	background: var(--panel-bg);
+	color: var(--text-primary);
+}
+
+.main {
+	flex: 1 1 auto;
+	overflow: auto;
+	padding-bottom: 140px;
+}
+
+form,
+section {
+	background: var(--card-bg);
+	border: 1px solid var(--card-border);
+	border-radius: 8px;
+	padding: 12px;
+	margin-bottom: 12px;
+}
+
+h1 {
+	font-size: 18px;
+	margin: 0 0 12px;
+}
+
+.grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+}
+
+label {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+
+input,
+select,
+button {
+	box-sizing: border-box;
+	width: 100%;
+	padding: 8px 10px;
+	border-radius: 6px;
+	border: 1px solid var(--field-border);
+	font: inherit;
+	background: var(--card-bg);
+}
+
+button {
+	cursor: pointer;
+	font-weight: 600;
+}
+
+[data-daisy-only][hidden] {
+	display: none;
+}
+
+.actions {
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.actions button {
+	flex: 1 1 0;
+	width: auto;
+}
+
+.status {
+	min-height: 44px;
+	font-size: 13px;
+	padding: 10px;
+	border-radius: 6px;
+	background: var(--status-neutral);
+}
+
+.status[data-tone='success'] {
+	background: var(--status-success-bg);
+	color: var(--status-success-text);
+}
+
+.status[data-tone='error'] {
+	background: var(--status-error-bg);
+	color: var(--status-error-text);
+}
+
+.footer {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: var(--card-bg);
+	padding: 12px 16px 16px;
+	border-top: 1px solid var(--card-border);
+	box-shadow: 0 -1px 10px rgba(0, 0, 0, 0.04);
+	z-index: 100;
+}
+
+.footer .status {
+	position: relative;
+	margin-bottom: 10px;
+}
+
+.summary {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
+	font-size: 13px;
+}
+
+.summary strong {
+	display: block;
+	font-size: 11px;
+	color: var(--text-muted);
+	margin-bottom: 2px;
+}

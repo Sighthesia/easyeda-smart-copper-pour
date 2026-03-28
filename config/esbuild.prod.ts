@@ -3,11 +3,11 @@ import esbuild from 'esbuild';
 import common from './esbuild.common';
 
 (async () => {
-	const ctx = await esbuild.context(common);
+	const contexts = await Promise.all([esbuild.context(common)]);
 	if (process.argv.includes('--watch')) {
-		await ctx.watch();
+		await Promise.all(contexts.map((ctx) => ctx.watch()));
 	} else {
-		await ctx.rebuild();
+		await Promise.all(contexts.map((ctx) => ctx.rebuild()));
 		process.exit();
 	}
 })();
