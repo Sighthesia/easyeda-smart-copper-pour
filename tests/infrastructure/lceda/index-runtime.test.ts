@@ -1,4 +1,6 @@
-import { describe, expect, test, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+import { TopologyMode } from '../../../src/domain/topology-mode';
 
 const planBuilder = {
 	buildWriterInput: vi.fn(),
@@ -53,7 +55,9 @@ describe('createRuntimeSmartCopperPourControllerDependencies', () => {
 	});
 
 	test('wires runtime factories to the expected runtime adapters', async () => {
-		const { createRuntimeSmartCopperPourControllerDependencies } = await import('../../../src/index');
+		const { createRuntimeSmartCopperPourControllerDependencies } = await import(
+			'../../../src/infrastructure/lceda/runtime-smart-copper-pour-controller-dependencies'
+		);
 
 		createRuntimeSmartCopperPourControllerDependencies();
 
@@ -68,6 +72,7 @@ describe('createRuntimeSmartCopperPourControllerDependencies', () => {
 
 	test('delegates preview through plan building and preview writing', async () => {
 		planBuilder.buildWriterInput.mockResolvedValue({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [{ vertices: [] }],
@@ -75,7 +80,9 @@ describe('createRuntimeSmartCopperPourControllerDependencies', () => {
 		writer.writePreview.mockResolvedValue({ previewToken: 'preview-token' });
 		reader.readSelectedPrimitives.mockResolvedValue([]);
 
-		const { createRuntimeSmartCopperPourControllerDependencies } = await import('../../../src/index');
+		const { createRuntimeSmartCopperPourControllerDependencies } = await import(
+			'../../../src/infrastructure/lceda/runtime-smart-copper-pour-controller-dependencies'
+		);
 		const dependencies = createRuntimeSmartCopperPourControllerDependencies();
 
 		expect(createLcedaSelectedPrimitivesReader).toHaveBeenCalledTimes(1);
@@ -85,17 +92,18 @@ describe('createRuntimeSmartCopperPourControllerDependencies', () => {
 		expect(createLcedaPourWriter).toHaveBeenCalledWith(runtimeObjectStore);
 
 		await dependencies.previewGateway.preview({
-			topologyMode: 'tree',
+			topologyMode: TopologyMode.Tree,
 			width: 2,
 			keepoutMargin: 0,
 		});
 
 		expect(planBuilder.buildWriterInput).toHaveBeenCalledWith({
-			topologyMode: 'tree',
+			topologyMode: TopologyMode.Tree,
 			width: 2,
 			keepoutMargin: 0,
 		});
 		expect(writer.writePreview).toHaveBeenCalledWith({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [{ vertices: [] }],
@@ -104,7 +112,9 @@ describe('createRuntimeSmartCopperPourControllerDependencies', () => {
 	});
 
 	test('delegates clear preview to the writer', async () => {
-		const { createRuntimeSmartCopperPourControllerDependencies } = await import('../../../src/index');
+		const { createRuntimeSmartCopperPourControllerDependencies } = await import(
+			'../../../src/infrastructure/lceda/runtime-smart-copper-pour-controller-dependencies'
+		);
 		const dependencies = createRuntimeSmartCopperPourControllerDependencies();
 
 		await dependencies.previewGateway.clearPreview();
@@ -116,6 +126,7 @@ describe('createRuntimeSmartCopperPourControllerDependencies', () => {
 
 	test('delegates apply through plan building and preserves preview token', async () => {
 		planBuilder.buildWriterInput.mockResolvedValue({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [{ vertices: [] }],
@@ -123,23 +134,26 @@ describe('createRuntimeSmartCopperPourControllerDependencies', () => {
 		writer.applyFinal.mockResolvedValue({ applied: true });
 		reader.readSelectedPrimitives.mockResolvedValue([]);
 
-		const { createRuntimeSmartCopperPourControllerDependencies } = await import('../../../src/index');
+		const { createRuntimeSmartCopperPourControllerDependencies } = await import(
+			'../../../src/infrastructure/lceda/runtime-smart-copper-pour-controller-dependencies'
+		);
 		const dependencies = createRuntimeSmartCopperPourControllerDependencies();
 
 		await dependencies.applyGateway.apply({
-			topologyMode: 'tree',
+			topologyMode: TopologyMode.Tree,
 			width: 2,
 			keepoutMargin: 0,
 			previewToken: 'preview-token',
 		});
 
 		expect(planBuilder.buildWriterInput).toHaveBeenCalledWith({
-			topologyMode: 'tree',
+			topologyMode: TopologyMode.Tree,
 			width: 2,
 			keepoutMargin: 0,
 			previewToken: 'preview-token',
 		});
 		expect(writer.applyFinal).toHaveBeenCalledWith({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [{ vertices: [] }],

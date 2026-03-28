@@ -24,6 +24,11 @@ export interface LcedaViaLayerSpan {
 	endLayer: string;
 }
 
+interface ResolveSelectedPadNodesOptions {
+	allowViaOnlySelection?: boolean;
+	minimumNodeCount?: number;
+}
+
 /**
  * Minimal normalized LCEDA pad shape.
  *
@@ -81,7 +86,10 @@ export class SelectionResolutionError extends Error {
 }
 
 // eslint-disable-next-line complexity
-export const resolveSelectedPadNodes = (primitives: readonly LcedaSelectablePrimitive[]): PadNode[] => {
+export const resolveSelectedPadNodes = (primitives: readonly LcedaSelectablePrimitive[], options: ResolveSelectedPadNodesOptions = {}): PadNode[] => {
+	const minimumNodeCount = options.minimumNodeCount ?? 2;
+	const allowViaOnlySelection = options.allowViaOnlySelection ?? false;
+
 	if (primitives.length === 0) {
 		throw new SelectionResolutionError('selection-empty', 'Select at least two pads before running Smart Copper Pour.');
 	}
@@ -190,12 +198,16 @@ export const resolveSelectedPadNodes = (primitives: readonly LcedaSelectablePrim
 		}
 	}
 
-	if (padCount === 0 && sawSelectableVia) {
+	if (padCount === 0 && sawSelectableVia && !allowViaOnlySelection) {
 		throw new SelectionResolutionError('selection-layer-missing', 'Select at least one pad on a named layer.');
 	}
 
 	if (padCount === 0) {
-		throw new SelectionResolutionError('selection-too-small', 'Select at least two pads on the same net.');
+		if (!allowViaOnlySelection) {
+			throw new SelectionResolutionError('selection-too-small', 'Select at least two pads on the same net.');
+		}
+
+		layer = resolveViaOnlyTargetLayer(pendingViaPrimitives);
 	}
 
 	if (pendingViaPrimitives.length > 0) {
@@ -208,11 +220,101 @@ export const resolveSelectedPadNodes = (primitives: readonly LcedaSelectablePrim
 	requireValue(net, 'selection-net-missing', 'Selected pads must belong to a named net.');
 	requireValue(layer, 'selection-layer-missing', 'Selected pads must be on a named layer.');
 
-	if (normalizedNodes.length < 2) {
+	if (normalizedNodes.length < minimumNodeCount) {
 		throw new SelectionResolutionError('selection-too-small', 'Select at least two pads on the same net.');
 	}
 
 	return normalizedNodes;
+};
+
+export const resolveSelectionSummaryNodes = (primitives: readonly LcedaSelectablePrimitive[]): PadNode[] => {
+	const normalizedNodes: PadNode[] = [];
+
+	for (const primitive of primitives) {
+		if (isPadSelection(primitive)) {
+			if (!isPadLike(primitive)) {
+				throw new SelectionResolutionError('selection-pad-invalid', `Pad ${primitive.id} is missing supported metadata.`);
+			}
+
+			const currentNet = requireValue(primitive.net, 'selection-net-missing', 'Selected pads must belong to a named net.');
+			const currentLayer = requireValue(primitive.layer, 'selection-layer-missing', 'Selected pads must be on a named layer.');
+			normalizedNodes.push({
+				id: primitive.id,
+				net: currentNet,
+				layer: currentLayer,
+				center: {
+					x: primitive.x,
+					y: primitive.y,
+				},
+				effectiveRadius: resolveEffectiveRadius(primitive),
+			});
+			continue;
+		}
+
+		if (isViaSelection(primitive)) {
+			if (!isViaLike(primitive)) {
+				throw new SelectionResolutionError('selection-via-unsupported', `Via ${primitive.id} is missing supported metadata.`);
+			}
+
+			const currentNet = requireValue(primitive.net, 'selection-net-missing', 'Selected pads must belong to a named net.');
+			const currentLayer = resolveSummaryViaLayer(primitive.layerSpan);
+			if (currentNet === null || currentLayer === null) {
+				throw new SelectionResolutionError('selection-via-unsupported', `Via ${primitive.id} uses unsupported layer span metadata.`);
+			}
+
+			normalizedNodes.push({
+				id: primitive.id,
+				net: currentNet,
+				layer: currentLayer,
+				center: {
+					x: primitive.x,
+					y: primitive.y,
+				},
+				effectiveRadius: resolveViaEffectiveRadius(primitive),
+			});
+			continue;
+		}
+
+		if (isUnsupportedViaSelection(primitive)) {
+			if (!isUnsupportedViaLike(primitive)) {
+				throw new SelectionResolutionError('selection-via-unsupported', `Via ${primitive.id} is missing supported metadata.`);
+			}
+
+			throw new SelectionResolutionError('selection-via-unsupported', `Via ${primitive.id} is missing supported layer span metadata.`);
+		}
+	}
+
+	return normalizedNodes;
+};
+
+const resolveViaOnlyTargetLayer = (pendingViaPrimitives: readonly LcedaSelectablePrimitive[]): string | null => {
+	for (const primitive of pendingViaPrimitives) {
+		if (!isViaSelection(primitive) || !isViaLike(primitive)) {
+			continue;
+		}
+
+		if (isSupportedLayerName(primitive.layerSpan.startLayer)) {
+			return primitive.layerSpan.startLayer;
+		}
+
+		if (isSupportedLayerName(primitive.layerSpan.endLayer)) {
+			return primitive.layerSpan.endLayer;
+		}
+	}
+
+	return null;
+};
+
+const resolveSummaryViaLayer = (layerSpan: LcedaViaLayerSpan): string | null => {
+	if (isSupportedLayerName(layerSpan.startLayer)) {
+		return layerSpan.startLayer;
+	}
+
+	if (isSupportedLayerName(layerSpan.endLayer)) {
+		return layerSpan.endLayer;
+	}
+
+	return null;
 };
 
 const finalizePendingVias = (

@@ -1,19 +1,21 @@
+import { optimizeSkeletonClearance } from '../domain/clearance-optimizer';
+import { planDaisyChainBackbone } from '../domain/daisy-chain-planner';
+import type { PadNode } from '../domain/pad-node';
+import type { SkeletonObstacle, SkeletonSegment } from '../domain/skeleton-types';
+import { planStarBackbone } from '../domain/star-backbone-planner';
+import { planTreeBackbone } from '../domain/tree-backbone-planner';
+import { createSmartCopperPourSelectionSummaryFromPrimitives } from '../infrastructure/lceda/selection-inspector';
 import type {
-	SmartCopperPourDaisyChainAutoRequest,
-	SmartCopperPourDaisyChainManualRequest,
 	SmartCopperPourApplyRequest,
 	SmartCopperPourApplyResult,
 	SmartCopperPourClearPreviewResult,
+	SmartCopperPourDaisyChainAutoRequest,
+	SmartCopperPourDaisyChainManualRequest,
+	SmartCopperPourInspectSelectionRequest,
 	SmartCopperPourPreviewRequest,
 	SmartCopperPourPreviewResult,
 	SmartCopperPourSelectionSummary,
 } from './smart-copper-pour-contract';
-import type { PadNode } from '../domain/pad-node';
-import { optimizeSkeletonClearance } from '../domain/clearance-optimizer';
-import { planDaisyChainBackbone } from '../domain/daisy-chain-planner';
-import { planStarBackbone } from '../domain/star-backbone-planner';
-import type { SkeletonObstacle, SkeletonSegment } from '../domain/skeleton-types';
-import { planTreeBackbone } from '../domain/tree-backbone-planner';
 
 /**
  * Reads and normalizes the current PCB selection.
@@ -21,7 +23,7 @@ import { planTreeBackbone } from '../domain/tree-backbone-planner';
  * @public
  */
 export interface SmartCopperPourSelectionInspector {
-	inspectSelection(): Promise<SmartCopperPourSelectionSummary>;
+	inspectSelection: () => Promise<SmartCopperPourSelectionSummary>;
 }
 
 export interface SmartCopperPourInspectedSelection {
@@ -36,8 +38,8 @@ export interface SmartCopperPourInspectedSelection {
  * @public
  */
 export interface SmartCopperPourPreviewGateway {
-	preview(request: SmartCopperPourPreviewRequest): Promise<SmartCopperPourPreviewResult>;
-	clearPreview(): Promise<SmartCopperPourClearPreviewResult>;
+	preview: (request: SmartCopperPourPreviewRequest) => Promise<SmartCopperPourPreviewResult>;
+	clearPreview: () => Promise<SmartCopperPourClearPreviewResult>;
 }
 
 /**
@@ -46,7 +48,7 @@ export interface SmartCopperPourPreviewGateway {
  * @public
  */
 export interface SmartCopperPourApplyGateway {
-	apply(request: SmartCopperPourApplyGatewayRequest): Promise<SmartCopperPourApplyResult>;
+	apply: (request: SmartCopperPourApplyGatewayRequest) => Promise<SmartCopperPourApplyResult>;
 }
 
 export type SmartCopperPourApplyGatewayRequest = SmartCopperPourApplyRequest & {
@@ -59,7 +61,7 @@ export interface SmartCopperPourObstacleResolverInput {
 }
 
 export interface SmartCopperPourObstacleResolver {
-	resolveObstacles(input: SmartCopperPourObstacleResolverInput): Promise<ReadonlyArray<SkeletonObstacle>>;
+	resolveObstacles: (input: SmartCopperPourObstacleResolverInput) => Promise<ReadonlyArray<SkeletonObstacle>>;
 }
 
 export type SmartCopperPourPreviewOptimizationRequest = SmartCopperPourPreviewRequest & {
@@ -122,7 +124,11 @@ export class SmartCopperPourController {
 
 	public constructor(private readonly dependencies: SmartCopperPourControllerDependencies) {}
 
-	public inspectSelection(): Promise<SmartCopperPourSelectionSummary> {
+	public inspectSelection(request?: SmartCopperPourInspectSelectionRequest): Promise<SmartCopperPourSelectionSummary> {
+		if (request?.selectionPrimitives !== undefined) {
+			return Promise.resolve(createSmartCopperPourSelectionSummaryFromPrimitives(request.selectionPrimitives));
+		}
+
 		return this.dependencies.selectionInspector.inspectSelection();
 	}
 
@@ -217,6 +223,10 @@ const validateSmartCopperPourRequest = (request: SmartCopperPourPreviewRequest |
 		throw new SmartCopperPourValidationError('invalid-obstacle-margin', 'Obstacle margin must be 0 or greater.');
 	}
 
+	validateDaisyChainRequest(request);
+};
+
+const validateDaisyChainRequest = (request: SmartCopperPourPreviewRequest | SmartCopperPourApplyRequest): void => {
 	if (request.topologyMode === 'daisyChain' && request.trunkMode !== 'manual' && request.trunkMode !== 'auto') {
 		throw new SmartCopperPourValidationError('invalid-trunk-mode', 'Daisy Chain mode requires trunkMode to be either manual or auto.');
 	}
@@ -229,6 +239,10 @@ const validateSmartCopperPourRequest = (request: SmartCopperPourPreviewRequest |
 		throw new SmartCopperPourValidationError('missing-trunk-end', 'Daisy Chain mode requires a trunk end point.');
 	}
 
+	validateManualTrunkCoordinates(request);
+};
+
+const validateManualTrunkCoordinates = (request: SmartCopperPourPreviewRequest | SmartCopperPourApplyRequest): void => {
 	if (
 		request.topologyMode === 'daisyChain' &&
 		request.trunkMode === 'manual' &&
@@ -263,19 +277,19 @@ export const createSmartCopperPourPlaceholderDependencies = (): SmartCopperPourC
 		}),
 	},
 	previewGateway: {
-		preview: async (_request: SmartCopperPourPreviewRequest): Promise<SmartCopperPourPreviewResult> => ({
+		preview: async (): Promise<SmartCopperPourPreviewResult> => ({
 			previewToken: null,
 		}),
 		clearPreview: async (): Promise<SmartCopperPourClearPreviewResult> => ({
 			cleared: true,
 		}),
 	},
-		applyGateway: {
-			apply: async (_request: SmartCopperPourApplyGatewayRequest): Promise<SmartCopperPourApplyResult> => ({
-				applied: false,
-			}),
-		},
-	});
+	applyGateway: {
+		apply: async (): Promise<SmartCopperPourApplyResult> => ({
+			applied: false,
+		}),
+	},
+});
 
 const resolveOptimizationSkeleton = (
 	request: SmartCopperPourPreviewOptimizationRequest,

@@ -1,7 +1,12 @@
-import type { SmartCopperPourSelectionSummary } from '../../application/smart-copper-pour-contract';
+import type {
+	SmartCopperPourSelectedPrimitive,
+	SmartCopperPourSelectionSummary,
+	SmartCopperPourViaLayerSpan,
+} from '../../application/smart-copper-pour-contract';
 import { type SmartCopperPourSelectionInspector, createSmartCopperPourSelectionSummary } from '../../application/smart-copper-pour-controller';
+import { toLcedaLayerName } from './layer-name';
 import { normalizeLcedaSelectionPrimitives } from './selection-expander';
-import { type LcedaSelectablePrimitive, type LcedaViaLayerSpan, resolveSelectedPadNodes } from './selection-resolver';
+import { type LcedaSelectablePrimitive, resolveSelectionSummaryNodes } from './selection-resolver';
 import { isLcedaPadPrimitive } from './selection-shapes';
 
 interface LcedaPadSelectablePrimitive extends LcedaSelectablePrimitive {
@@ -21,7 +26,7 @@ interface LcedaViaSelectablePrimitive extends LcedaSelectablePrimitive {
 	net: string | null;
 	x: number;
 	y: number;
-	layerSpan: LcedaViaLayerSpan;
+	layerSpan: SmartCopperPourViaLayerSpan;
 	padRadius: number | null;
 }
 
@@ -51,6 +56,12 @@ export interface LcedaSelectedPrimitivesReader {
 	readSelectedPrimitives: () => Promise<readonly LcedaInspectedSelectablePrimitive[]>;
 }
 
+export interface LcedaSelectionRuntime {
+	pcb_SelectControl?: {
+		getAllSelectedPrimitives?: () => Promise<unknown>;
+	};
+}
+
 interface LcedaViaPrimitiveShape {
 	getState_PrimitiveId: () => string;
 	getState_X: () => number;
@@ -63,26 +74,39 @@ interface LcedaViaPrimitiveShape {
 
 export const createSmartCopperPourSelectionInspector = (reader: LcedaSelectedPrimitivesReader): SmartCopperPourSelectionInspector => ({
 	inspectSelection: async (): Promise<SmartCopperPourSelectionSummary> => {
-		const selectedPrimitives = await reader.readSelectedPrimitives();
-		const normalizedPrimitives = normalizeSelectedPrimitives(selectedPrimitives);
-		const normalizedNodes = resolveSelectedPadNodes(normalizedPrimitives);
-		return createSmartCopperPourSelectionSummary({
-			normalizedNodes,
-			netName: normalizedNodes[0]?.net ?? null,
-			layerName: normalizedNodes[0]?.layer ?? null,
-		});
+		return createSmartCopperPourSelectionSummaryFromPrimitives(await reader.readSelectedPrimitives());
 	},
 });
 
-export const createLcedaSelectedPrimitivesReader = (): LcedaSelectedPrimitivesReader => ({
+export const createSmartCopperPourSelectionSummaryFromPrimitives = (
+	selectedPrimitives: readonly SmartCopperPourSelectedPrimitive[],
+): SmartCopperPourSelectionSummary => {
+	const normalizedPrimitives = normalizeSelectedPrimitives(selectedPrimitives);
+	const normalizedNodes = resolveSelectionSummaryNodes(normalizedPrimitives);
+	return createSmartCopperPourSelectionSummary({
+		normalizedNodes,
+		netName: normalizedNodes[0]?.net ?? null,
+		layerName: normalizedNodes[0]?.layer ?? null,
+	});
+};
+
+export const normalizeSelectedSnapshotPrimitives = (
+	selectedPrimitives: readonly SmartCopperPourSelectedPrimitive[],
+): readonly LcedaSelectablePrimitive[] => {
+	return normalizeSelectedPrimitives(selectedPrimitives);
+};
+
+export const createLcedaSelectedPrimitivesReader = (
+	runtime: LcedaSelectionRuntime = eda as unknown as LcedaSelectionRuntime,
+): LcedaSelectedPrimitivesReader => ({
 	readSelectedPrimitives: async (): Promise<readonly LcedaInspectedSelectablePrimitive[]> => {
-		const primitives = await readRuntimeSelectedPrimitives();
+		const primitives = await readRuntimeSelectedPrimitives(runtime);
 		return normalizeLcedaSelectionPrimitives(primitives).filter(isRuntimePrimitive).map(toSelectablePrimitive);
 	},
 });
 
-const readRuntimeSelectedPrimitives = async (): Promise<readonly IPCB_Primitive[]> => {
-	const selectionControl = (eda as { pcb_SelectControl?: { getAllSelectedPrimitives?: () => Promise<unknown> } } | undefined)?.pcb_SelectControl;
+const readRuntimeSelectedPrimitives = async (runtime: LcedaSelectionRuntime): Promise<readonly IPCB_Primitive[]> => {
+	const selectionControl = runtime.pcb_SelectControl;
 	if (selectionControl === undefined || typeof selectionControl.getAllSelectedPrimitives !== 'function') {
 		throw new Error('LCEDA selected primitives API is unavailable.');
 	}
@@ -136,7 +160,7 @@ const toSelectablePrimitive = (primitive: IPCB_Primitive): LcedaInspectedSelecta
 		id: primitive.getState_PrimitiveId(),
 		type: 'PAD',
 		net: primitive.getState_Net() ?? null,
-		layer: toLayerName(primitive.getState_Layer()),
+		layer: toLcedaLayerName(primitive.getState_Layer()),
 		x: primitive.getState_X(),
 		y: primitive.getState_Y(),
 		width,
@@ -166,12 +190,12 @@ const normalizePrimitive = (primitive: unknown): LcedaSelectablePrimitive | null
 		return null;
 	}
 
-	if (isInspectedSelectablePrimitive(primitive)) {
-		return primitive;
-	}
-
 	if (hasRuntimePrimitiveShape(primitive)) {
 		return toSelectablePrimitive(primitive as IPCB_Primitive);
+	}
+
+	if (isInspectedSelectablePrimitive(primitive)) {
+		return primitive;
 	}
 
 	return null;
@@ -213,8 +237,8 @@ const isSupportedLcedaViaPrimitive = (primitive: IPCB_Primitive): primitive is I
 		typeof candidate.getState_Net === 'function' &&
 		hasFiniteCoordinate(candidate.getState_X()) &&
 		hasFiniteCoordinate(candidate.getState_Y()) &&
-		toLayerName(candidate.getState_StartLayer()) !== null &&
-		toLayerName(candidate.getState_EndLayer()) !== null
+		toLcedaLayerName(candidate.getState_StartLayer()) !== null &&
+		toLcedaLayerName(candidate.getState_EndLayer()) !== null
 	);
 };
 
@@ -231,8 +255,8 @@ const isUnsupportedLcedaViaPrimitive = (primitive: IPCB_Primitive): primitive is
 		typeof primitive.getState_Diameter !== 'function' ||
 		!hasFiniteCoordinate(primitive.getState_X()) ||
 		!hasFiniteCoordinate(primitive.getState_Y()) ||
-		toLayerName(primitive.getState_StartLayer()) === null ||
-		toLayerName(primitive.getState_EndLayer()) === null
+		toLcedaLayerName(primitive.getState_StartLayer()) === null ||
+		toLcedaLayerName(primitive.getState_EndLayer()) === null
 	);
 };
 
@@ -247,19 +271,10 @@ const hasLcedaViaPrimitiveSignature = (primitive: IPCB_Primitive): primitive is 
 	);
 };
 
-const toLayerName = (layer: unknown): string | null => {
-	if (typeof layer !== 'string') {
-		return null;
-	}
-
-	const layerName = layer.trim();
-	return layerName.length > 0 ? layerName : null;
-};
-
-const toLayerSpan = (startLayer: unknown, endLayer: unknown): LcedaViaLayerSpan => {
+const toLayerSpan = (startLayer: unknown, endLayer: unknown): SmartCopperPourViaLayerSpan => {
 	return {
-		startLayer: toLayerName(startLayer) ?? '',
-		endLayer: toLayerName(endLayer) ?? '',
+		startLayer: toLcedaLayerName(startLayer) ?? '',
+		endLayer: toLcedaLayerName(endLayer) ?? '',
 	};
 };
 

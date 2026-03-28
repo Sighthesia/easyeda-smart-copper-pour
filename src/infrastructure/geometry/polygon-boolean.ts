@@ -1,11 +1,11 @@
+import ClipperLib from 'clipper-lib';
+
 import type { SkeletonPoint, SkeletonPolygon } from '../../domain/skeleton-types';
 
-const ClipperLib = require('clipper-lib');
-
-type ClipperPoint = {
+interface ClipperPoint {
 	X: number;
 	Y: number;
-};
+}
 
 // FIXME: Revisit scaling if later tasks need finer-than-0.001 geometry precision.
 const CLIPPER_SCALE = 1000;

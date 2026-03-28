@@ -1,14 +1,13 @@
+import ClipperLib from 'clipper-lib';
+
 import type { SmartCopperPourCornerStyle } from '../../application/smart-copper-pour-contract';
 import type { SkeletonPoint, SkeletonPolygon, SkeletonSegment } from '../../domain/skeleton-types';
-
 import { unionSkeletonPolygons } from './polygon-boolean';
 
-const ClipperLib = require('clipper-lib');
-
-type ClipperPoint = {
+interface ClipperPoint {
 	X: number;
 	Y: number;
-};
+}
 
 // FIXME: Revisit scaling if later tasks need finer-than-0.001 geometry precision.
 const CLIPPER_SCALE = 1000;
@@ -48,11 +47,7 @@ export const buildSkeletonOffsetPolygons = (options: BuildSkeletonOffsetPolygons
 	return unionSkeletonPolygons(strokedPolygons);
 };
 
-const strokePath = (
-	path: ReadonlyArray<SkeletonPoint>,
-	strokeRadius: number,
-	cornerStyle: SmartCopperPourCornerStyle,
-): SkeletonPolygon[] => {
+const strokePath = (path: ReadonlyArray<SkeletonPoint>, strokeRadius: number, cornerStyle: SmartCopperPourCornerStyle): SkeletonPolygon[] => {
 	if (path.length < 2) {
 		return [];
 	}
@@ -63,9 +58,11 @@ const strokePath = (
 	const solution = new ClipperLib.Paths();
 	offset.Execute(solution, scaleValue(strokeRadius));
 
-	return solution.filter((path: ReadonlyArray<ClipperPoint>) => path.length >= 3).map((path: ReadonlyArray<ClipperPoint>) => ({
-		vertices: path.map(fromClipperPoint),
-	}));
+	return solution
+		.filter((path: ReadonlyArray<ClipperPoint>) => path.length >= 3)
+		.map((path: ReadonlyArray<ClipperPoint>) => ({
+			vertices: path.map(fromClipperPoint),
+		}));
 };
 
 const buildStrokePaths = (segments: ReadonlyArray<SkeletonSegment>): ReadonlyArray<ReadonlyArray<SkeletonPoint>> => {
@@ -121,7 +118,6 @@ const tracePath = (
 		visited.add(currentEdgeIndex);
 		const segment = segments[currentEdgeIndex];
 		const startKey = toPointKey(segment.start);
-		const endKey = toPointKey(segment.end);
 		const nextPoint = startKey === currentPointKey ? segment.end : segment.start;
 
 		if (path.length === 0) {

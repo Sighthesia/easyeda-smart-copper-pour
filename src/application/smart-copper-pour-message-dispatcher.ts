@@ -1,18 +1,18 @@
-import {
-	type SmartCopperPourErrorPayload,
-	type SmartCopperPourFailureMessage,
-	type SmartCopperPourApplyRequest,
-	type SmartCopperPourMessageMeta,
-	type SmartCopperPourResponseMessage,
-	type SmartCopperPourRequestMessage,
-	type SmartCopperPourSelectionSummary,
+import type {
+	SmartCopperPourApplyRequest,
+	SmartCopperPourErrorPayload,
+	SmartCopperPourFailureMessage,
+	SmartCopperPourInspectSelectionRequest,
+	SmartCopperPourMessageMeta,
+	SmartCopperPourRequestMessage,
+	SmartCopperPourResponseMessage,
+	SmartCopperPourSelectionSummary,
 } from './smart-copper-pour-contract';
 import type { SmartCopperPourPreviewGateway } from './smart-copper-pour-controller';
 
-export interface SmartCopperPourMessageDispatcherController
-	extends SmartCopperPourPreviewGateway {
-	inspectSelection(): Promise<SmartCopperPourSelectionSummary>;
-	apply(request: SmartCopperPourApplyRequest): Promise<{ applied: boolean }>;
+export interface SmartCopperPourMessageDispatcherController extends SmartCopperPourPreviewGateway {
+	inspectSelection: (request?: SmartCopperPourInspectSelectionRequest) => Promise<SmartCopperPourSelectionSummary>;
+	apply: (request: SmartCopperPourApplyRequest) => Promise<{ applied: boolean }>;
 }
 
 export const handleSmartCopperPourMessage = async (
@@ -23,11 +23,11 @@ export const handleSmartCopperPourMessage = async (
 	const responseMeta = cloneResponseMeta(message.meta);
 
 	try {
-			switch (command) {
-				case 'inspectSelection': {
-					const payload = await controller.inspectSelection();
-					return { ok: true, command, payload, ...responseMeta };
-				}
+		switch (command) {
+			case 'inspectSelection': {
+				const payload = await controller.inspectSelection(message.payload);
+				return { ok: true, command, payload, ...responseMeta };
+			}
 			case 'preview': {
 				const payload = await controller.preview(message.payload);
 				return { ok: true, command, payload, ...responseMeta };
@@ -67,8 +67,8 @@ const createFailureMessage = (
 	}
 };
 
-const assertNever = (_value: never): never => {
-	throw new Error('Unhandled Smart Copper Pour command.');
+const assertNever = (value: never): never => {
+	throw new Error(`Unhandled Smart Copper Pour command: ${String(value)}`);
 };
 
 const toSmartCopperPourErrorPayload = (error: unknown): SmartCopperPourErrorPayload => {
@@ -104,11 +104,7 @@ const isSmartCopperPourErrorPayloadLike = (value: unknown): value is SmartCopper
 	}
 
 	const error = value as { code?: unknown; message?: unknown; details?: unknown };
-	return (
-		typeof error.code === 'string' &&
-		typeof error.message === 'string' &&
-		(error.details === undefined || typeof error.details === 'string')
-	);
+	return typeof error.code === 'string' && typeof error.message === 'string' && (error.details === undefined || typeof error.details === 'string');
 };
 
 const cloneResponseMeta = (meta?: SmartCopperPourMessageMeta): { meta?: SmartCopperPourMessageMeta } => {

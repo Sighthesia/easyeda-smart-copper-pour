@@ -11,6 +11,7 @@ import type { SkeletonPolygon } from '../../domain/skeleton-types';
  * @public
  */
 export interface LcedaPourObjectInput {
+	layerId: number;
 	layerName: string;
 	netName: string;
 	polygon: SkeletonPolygon;
@@ -23,9 +24,9 @@ export interface LcedaPourObjectInput {
  * @public
  */
 export interface LcedaPourObjectStore {
-	createPreviewRegion(input: LcedaPourObjectInput): Promise<LcedaPreviewObjectRef>;
-	createPour(input: LcedaPourObjectInput): Promise<LcedaPourObjectRef>;
-	deleteObject(objectRef: LcedaStoredObjectRef): Promise<void>;
+	createPreviewRegion: (input: LcedaPourObjectInput) => Promise<LcedaPreviewObjectRef>;
+	createPour: (input: LcedaPourObjectInput) => Promise<LcedaPourObjectRef>;
+	deleteObject: (objectRef: LcedaStoredObjectRef) => Promise<void>;
 }
 
 /**
@@ -58,6 +59,7 @@ export type LcedaPourObjectRef = LcedaStoredObjectRef<'pour'>;
  * @public
  */
 export interface LcedaPourWriterPreviewInput {
+	layerId: number;
 	layerName: string;
 	netName: string;
 	polygons: ReadonlyArray<SkeletonPolygon>;
@@ -78,9 +80,9 @@ export interface LcedaPourWriterApplyInput extends LcedaPourWriterPreviewInput {
  * @public
  */
 export interface LcedaPourWriter {
-	writePreview(input: LcedaPourWriterPreviewInput): Promise<SmartCopperPourPreviewResult>;
-	applyFinal(input: LcedaPourWriterApplyInput): Promise<SmartCopperPourApplyResult>;
-	clearPreview(): Promise<SmartCopperPourClearPreviewResult>;
+	writePreview: (input: LcedaPourWriterPreviewInput) => Promise<SmartCopperPourPreviewResult>;
+	applyFinal: (input: LcedaPourWriterApplyInput) => Promise<SmartCopperPourApplyResult>;
+	clearPreview: () => Promise<SmartCopperPourClearPreviewResult>;
 }
 
 interface PreviewSession {
@@ -99,48 +101,48 @@ interface PreviewSession {
  *
  * @public
  */
-	export const createLcedaPourWriter = (objectStore: LcedaPourObjectStore): LcedaPourWriter => {
-		let previewSession: PreviewSession | undefined;
-		let previewSequence = 0;
+export const createLcedaPourWriter = (objectStore: LcedaPourObjectStore): LcedaPourWriter => {
+	let previewSession: PreviewSession | undefined;
+	let previewSequence = 0;
 
-		const deleteObjects = async (objectRefs: ReadonlyArray<LcedaStoredObjectRef>): Promise<void> => {
-			let firstError: unknown;
+	const deleteObjects = async (objectRefs: ReadonlyArray<LcedaStoredObjectRef>): Promise<void> => {
+		let firstError: unknown;
 
-			for (const objectRef of objectRefs) {
-				try {
-					await objectStore.deleteObject(objectRef);
-				} catch (error) {
-					firstError ??= error;
-				}
+		for (const objectRef of objectRefs) {
+			try {
+				await objectStore.deleteObject(objectRef);
+			} catch (error) {
+				firstError ??= error;
 			}
+		}
 
-			if (firstError !== undefined) {
-				throw firstError;
+		if (firstError !== undefined) {
+			throw firstError;
+		}
+	};
+
+	const deletePreviewObjects = async (session: PreviewSession): Promise<void> => {
+		for (let index = 0; index < session.objectRefs.length; index += 1) {
+			const objectRef = session.objectRefs[index];
+			try {
+				await objectStore.deleteObject(objectRef);
+			} catch (error) {
+				session.objectRefs = session.objectRefs.slice(index);
+				throw error;
 			}
-		};
+		}
 
-		const deletePreviewObjects = async (session: PreviewSession): Promise<void> => {
-			for (let index = 0; index < session.objectRefs.length; index += 1) {
-				const objectRef = session.objectRefs[index];
-				try {
-					await objectStore.deleteObject(objectRef);
-				} catch (error) {
-					session.objectRefs = session.objectRefs.slice(index);
-					throw error;
-				}
-			}
+		session.objectRefs = [];
+	};
 
-			session.objectRefs = [];
-		};
+	const clearPreviewSession = async (): Promise<void> => {
+		if (previewSession === undefined) {
+			return;
+		}
 
-		const clearPreviewSession = async (): Promise<void> => {
-			if (previewSession === undefined) {
-				return;
-			}
-
-			await deletePreviewObjects(previewSession);
-			previewSession = undefined;
-		};
+		await deletePreviewObjects(previewSession);
+		previewSession = undefined;
+	};
 
 	return {
 		writePreview: async (input: LcedaPourWriterPreviewInput): Promise<SmartCopperPourPreviewResult> => {
@@ -155,6 +157,7 @@ interface PreviewSession {
 				for (const [polygonIndex, polygon] of input.polygons.entries()) {
 					previewObjectRefs.push(
 						await objectStore.createPreviewRegion({
+							layerId: input.layerId,
 							layerName: input.layerName,
 							netName: input.netName,
 							polygon,
@@ -189,6 +192,7 @@ interface PreviewSession {
 				for (const [polygonIndex, polygon] of input.polygons.entries()) {
 					createdPourRefs.push(
 						await objectStore.createPour({
+							layerId: input.layerId,
 							layerName: input.layerName,
 							netName: input.netName,
 							polygon,

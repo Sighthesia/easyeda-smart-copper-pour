@@ -1,5 +1,5 @@
-import type { SkeletonObstacle, SkeletonPoint } from '../../domain/skeleton-types';
 import type { SmartCopperPourObstacleResolver, SmartCopperPourObstacleResolverInput } from '../../application/smart-copper-pour-controller';
+import type { SkeletonObstacle, SkeletonPoint } from '../../domain/skeleton-types';
 
 /**
  * Minimal LCEDA primitive used for obstacle extraction.
@@ -23,7 +23,7 @@ export interface LcedaObstaclePrimitive {
  * @public
  */
 export interface LcedaObstacleQuery {
-	listSameLayerPrimitives(layerName: string): Promise<ReadonlyArray<LcedaObstaclePrimitive>>;
+	listSameLayerPrimitives: (layerName: string) => Promise<ReadonlyArray<LcedaObstaclePrimitive>>;
 }
 
 /**
@@ -60,12 +60,7 @@ const toSkeletonObstacle = (primitive: LcedaObstaclePrimitive): SkeletonObstacle
 		};
 	}
 
-	if (
-		typeof primitive.x !== 'number' ||
-		!Number.isFinite(primitive.x) ||
-		typeof primitive.y !== 'number' ||
-		!Number.isFinite(primitive.y)
-	) {
+	if (typeof primitive.x !== 'number' || !Number.isFinite(primitive.x) || typeof primitive.y !== 'number' || !Number.isFinite(primitive.y)) {
 		return null;
 	}
 

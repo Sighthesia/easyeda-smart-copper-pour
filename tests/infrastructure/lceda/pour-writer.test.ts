@@ -2,11 +2,11 @@ import { describe, expect, test, vi } from 'vitest';
 
 import type { SkeletonPolygon } from '../../../src/domain/skeleton-types';
 import {
-	createLcedaPourWriter,
 	type LcedaPourObjectRef,
 	type LcedaPourObjectStore,
 	type LcedaPreviewObjectRef,
 	type LcedaStoredObjectRef,
+	createLcedaPourWriter,
 } from '../../../src/infrastructure/lceda/pour-writer';
 
 const createPolygon = (): SkeletonPolygon => ({
@@ -19,63 +19,68 @@ const createPolygon = (): SkeletonPolygon => ({
 });
 
 const createObjectStore = (): LcedaPourObjectStore => ({
-	createPreviewRegion: vi.fn(async ({ polygonIndex }) => ({ kind: 'region', primitiveId: `preview-${polygonIndex}` })),
-	createPour: vi.fn(async ({ polygonIndex }) => ({ kind: 'pour', primitiveId: `pour-${polygonIndex}` })),
+	createPreviewRegion: vi.fn(async ({ polygonIndex }) => ({ kind: 'region' as const, primitiveId: `preview-${polygonIndex}` })),
+	createPour: vi.fn(async ({ polygonIndex }) => ({ kind: 'pour' as const, primitiveId: `pour-${polygonIndex}` })),
 	deleteObject: vi.fn(async () => undefined),
 });
 
 const createPreviewRef = (primitiveId: string): LcedaPreviewObjectRef => ({ kind: 'region', primitiveId });
 const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pour', primitiveId });
 
-	describe('createLcedaPourWriter', () => {
-		test('creates preview regions and returns a preview token', async () => {
+describe('createLcedaPourWriter', () => {
+	test('creates preview regions and returns a preview token', async () => {
 		const objectStore = createObjectStore();
 		const writer = createLcedaPourWriter(objectStore);
 
 		const result = await writer.writePreview({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [createPolygon()],
 		});
 
 		expect(result.previewToken).toBe('preview-session-1');
-			expect(objectStore.createPreviewRegion).toHaveBeenCalledWith({
-				layerName: 'TopLayer',
-				netName: 'VCC',
-				polygon: createPolygon(),
-				polygonIndex: 0,
-			});
+		expect(objectStore.createPreviewRegion).toHaveBeenCalledWith({
+			layerId: 1,
+			layerName: 'TopLayer',
+			netName: 'VCC',
+			polygon: createPolygon(),
+			polygonIndex: 0,
 		});
+	});
 
 	test('rolls back partially created preview regions when preview creation fails', async () => {
-			const objectStore = createObjectStore();
-			objectStore.createPreviewRegion = vi
-				.fn<(_: { polygonIndex: number }) => Promise<LcedaPreviewObjectRef>>()
-				.mockResolvedValueOnce(createPreviewRef('preview-0'))
-				.mockRejectedValueOnce(new Error('preview failed'));
-			const writer = createLcedaPourWriter(objectStore);
+		const objectStore = createObjectStore();
+		objectStore.createPreviewRegion = vi
+			.fn<(_: { polygonIndex: number }) => Promise<LcedaPreviewObjectRef>>()
+			.mockResolvedValueOnce(createPreviewRef('preview-0'))
+			.mockRejectedValueOnce(new Error('preview failed'));
+		const writer = createLcedaPourWriter(objectStore);
 
-			await expect(
-				writer.writePreview({
-					layerName: 'TopLayer',
-					netName: 'VCC',
-					polygons: [createPolygon(), createPolygon()],
-				}),
-			).rejects.toThrow('preview failed');
+		await expect(
+			writer.writePreview({
+				layerId: 1,
+				layerName: 'TopLayer',
+				netName: 'VCC',
+				polygons: [createPolygon(), createPolygon()],
+			}),
+		).rejects.toThrow('preview failed');
 
-			expect(objectStore.deleteObject).toHaveBeenCalledWith(createPreviewRef('preview-0'));
-		});
+		expect(objectStore.deleteObject).toHaveBeenCalledWith(createPreviewRef('preview-0'));
+	});
 
 	test('creates final pours and deletes preview objects on success', async () => {
 		const objectStore = createObjectStore();
 		const writer = createLcedaPourWriter(objectStore);
 		const preview = await writer.writePreview({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [createPolygon()],
 		});
 
 		const result = await writer.applyFinal({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [createPolygon()],
@@ -84,6 +89,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 
 		expect(result).toEqual({ applied: true });
 		expect(objectStore.createPour).toHaveBeenCalledWith({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygon: createPolygon(),
@@ -103,6 +109,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 
 		await expect(
 			writer.writePreview({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygons: [createPolygon(), createPolygon()],
@@ -116,12 +123,14 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 		const objectStore = createObjectStore();
 		const writer = createLcedaPourWriter(objectStore);
 		await writer.writePreview({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [createPolygon()],
 		});
 
 		await writer.applyFinal({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [createPolygon()],
@@ -140,6 +149,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 		const writer = createLcedaPourWriter(objectStore);
 
 		const result = await writer.writePreview({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [],
@@ -154,12 +164,14 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 		const objectStore = createObjectStore();
 		const writer = createLcedaPourWriter(objectStore);
 		const preview = await writer.writePreview({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [createPolygon()],
 		});
 
 		const result = await writer.applyFinal({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [createPolygon()],
@@ -181,6 +193,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 		const writer = createLcedaPourWriter(objectStore);
 		const polygons = [createPolygon(), createPolygon()];
 		const preview = await writer.writePreview({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons,
@@ -188,6 +201,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 
 		await expect(
 			writer.applyFinal({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygons,
@@ -212,6 +226,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 
 		await expect(
 			writer.applyFinal({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygons: [createPolygon(), createPolygon()],
@@ -229,6 +244,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 			.mockResolvedValueOnce(undefined);
 		const writer = createLcedaPourWriter(objectStore);
 		const preview = await writer.writePreview({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [createPolygon()],
@@ -236,6 +252,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 
 		await expect(
 			writer.applyFinal({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygons: [createPolygon()],
@@ -258,6 +275,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 		const writer = createLcedaPourWriter(objectStore);
 		const polygons = [createPolygon(), createPolygon()];
 		const preview = await writer.writePreview({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons,
@@ -265,6 +283,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 
 		await expect(
 			writer.applyFinal({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygons: [createPolygon()],
@@ -289,6 +308,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 			.mockRejectedValueOnce(new Error('pour rollback failed'));
 		const writer = createLcedaPourWriter(objectStore);
 		const preview = await writer.writePreview({
+			layerId: 1,
 			layerName: 'TopLayer',
 			netName: 'VCC',
 			polygons: [createPolygon()],
@@ -296,6 +316,7 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 
 		await expect(
 			writer.applyFinal({
+				layerId: 1,
 				layerName: 'TopLayer',
 				netName: 'VCC',
 				polygons: [createPolygon()],
@@ -303,4 +324,4 @@ const createPourRef = (primitiveId: string): LcedaPourObjectRef => ({ kind: 'pou
 			}),
 		).rejects.toThrow('preview cleanup failed');
 	});
-	});
+});

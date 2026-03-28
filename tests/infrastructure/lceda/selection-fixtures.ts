@@ -58,7 +58,7 @@ export const createComponentSelection = (overrides: ComponentSelectionOverrides 
 export const createPadPrimitive = (overrides: PadPrimitiveOverrides = {}): PadPrimitiveFixture => {
 	const id = overrides.id ?? 'pad-runtime-1';
 	const net = overrides.net ?? 'VCC';
-	const layer = overrides.layer ?? 'TopLayer';
+	const layer = overrides.layer ?? 1;
 	const x = overrides.x ?? 12;
 	const y = overrides.y ?? 34;
 	const width = overrides.width ?? 6;

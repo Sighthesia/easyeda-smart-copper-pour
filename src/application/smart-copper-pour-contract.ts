@@ -3,6 +3,8 @@ import { TopologyMode } from '../domain/topology-mode';
 export const SMART_COPPER_POUR_IFRAME_ID = 'smart-copper-pour';
 export const SMART_COPPER_POUR_REQUEST_TOPIC = 'smart-copper-pour/request';
 export const SMART_COPPER_POUR_RESPONSE_TOPIC = 'smart-copper-pour/response';
+export const SMART_COPPER_POUR_EVENT_TOPIC = 'smart-copper-pour/event';
+export const SMART_COPPER_POUR_LOG_SCOPE = 'Smart Copper Pour';
 
 /**
  * Supported smart copper request commands.
@@ -38,6 +40,57 @@ export interface SmartCopperPourTrunkPoint {
 	y: number;
 }
 
+export interface SmartCopperPourViaLayerSpan {
+	startLayer: string;
+	endLayer: string;
+}
+
+export interface SmartCopperPourSelectedPadPrimitive {
+	id: string;
+	type: 'PAD';
+	net: string | null;
+	layer: string | null;
+	x: number;
+	y: number;
+	width: number | null;
+	height: number | null;
+	padRadius: number | null;
+	holeRadius: number | null;
+}
+
+export interface SmartCopperPourSelectedViaPrimitive {
+	id: string;
+	type: 'VIA';
+	net: string | null;
+	x: number;
+	y: number;
+	layerSpan: SmartCopperPourViaLayerSpan;
+	padRadius: number | null;
+}
+
+export interface SmartCopperPourSelectedUnsupportedViaPrimitive {
+	id: string;
+	type: 'VIA_UNSUPPORTED';
+	net: string | null;
+	x: number;
+	y: number;
+}
+
+export interface SmartCopperPourSelectedOtherPrimitive {
+	id: string;
+	type: 'OTHER';
+}
+
+export type SmartCopperPourSelectedPrimitive =
+	| SmartCopperPourSelectedPadPrimitive
+	| SmartCopperPourSelectedViaPrimitive
+	| SmartCopperPourSelectedUnsupportedViaPrimitive
+	| SmartCopperPourSelectedOtherPrimitive;
+
+export interface SmartCopperPourInspectSelectionRequest {
+	selectionPrimitives?: readonly SmartCopperPourSelectedPrimitive[];
+}
+
 /**
  * Normalized selection summary shown to the UI.
  *
@@ -49,6 +102,12 @@ export interface SmartCopperPourSelectionSummary {
 	layerName: string | null;
 	selectionFingerprint: string;
 }
+
+export interface SmartCopperPourSelectionChangedEventMessage {
+	type: 'selectionChanged';
+}
+
+export type SmartCopperPourEventMessage = SmartCopperPourSelectionChangedEventMessage;
 
 /**
  * Preview request payload.
@@ -64,6 +123,7 @@ export interface SmartCopperPourRequestBase {
 	maxWidth?: number;
 	widthStep?: number;
 	obstacleMargin?: number;
+	selectionPrimitives?: readonly SmartCopperPourSelectedPrimitive[];
 }
 
 export interface SmartCopperPourTreeLikeRequest extends SmartCopperPourRequestBase {
@@ -141,44 +201,44 @@ export interface SmartCopperPourErrorPayload {
  *
  * @public
  */
-export type SmartCopperPourInspectSelectionMessage = {
+export interface SmartCopperPourInspectSelectionMessage {
 	command: 'inspectSelection';
 	meta?: SmartCopperPourMessageMeta;
-	payload?: undefined;
-};
+	payload?: SmartCopperPourInspectSelectionRequest;
+}
 
 /**
  * Preview request envelope sent from the iframe.
  *
  * @public
  */
-export type SmartCopperPourPreviewMessage = {
+export interface SmartCopperPourPreviewMessage {
 	command: 'preview';
 	meta?: SmartCopperPourMessageMeta;
 	payload: SmartCopperPourPreviewRequest;
-};
+}
 
 /**
  * Apply request envelope sent from the iframe.
  *
  * @public
  */
-export type SmartCopperPourApplyMessage = {
+export interface SmartCopperPourApplyMessage {
 	command: 'apply';
 	meta?: SmartCopperPourMessageMeta;
 	payload: SmartCopperPourApplyRequest;
-};
+}
 
 /**
  * Clear preview request envelope sent from the iframe.
  *
  * @public
  */
-export type SmartCopperPourClearPreviewMessage = {
+export interface SmartCopperPourClearPreviewMessage {
 	command: 'clearPreview';
 	meta?: SmartCopperPourMessageMeta;
 	payload?: undefined;
-};
+}
 
 /**
  * Request envelope sent from the iframe.
@@ -197,7 +257,7 @@ export type SmartCopperPourRequestMessage =
  * @public
  */
 export interface SmartCopperPourRequestPayloadByCommand {
-	inspectSelection: undefined;
+	inspectSelection: SmartCopperPourInspectSelectionRequest | undefined;
 	preview: SmartCopperPourPreviewRequest;
 	apply: SmartCopperPourApplyRequest;
 	clearPreview: undefined;
@@ -253,18 +313,14 @@ export type SmartCopperPourInspectSelectionResponseMessage =
  *
  * @public
  */
-export type SmartCopperPourPreviewResponseMessage =
-	| SmartCopperPourSuccessMessage<'preview'>
-	| SmartCopperPourFailureMessage<'preview'>;
+export type SmartCopperPourPreviewResponseMessage = SmartCopperPourSuccessMessage<'preview'> | SmartCopperPourFailureMessage<'preview'>;
 
 /**
  * Apply response envelope sent to the iframe.
  *
  * @public
  */
-export type SmartCopperPourApplyResponseMessage =
-	| SmartCopperPourSuccessMessage<'apply'>
-	| SmartCopperPourFailureMessage<'apply'>;
+export type SmartCopperPourApplyResponseMessage = SmartCopperPourSuccessMessage<'apply'> | SmartCopperPourFailureMessage<'apply'>;
 
 /**
  * Clear preview response envelope sent to the iframe.
@@ -303,6 +359,7 @@ export const isSmartCopperPourRequestMessage = (value: unknown): value is SmartC
 
 	switch (request.command) {
 		case 'inspectSelection':
+			return request.payload === undefined || isSmartCopperPourInspectSelectionRequest(request.payload);
 		case 'clearPreview':
 			return request.payload === undefined;
 		case 'preview':
@@ -349,6 +406,14 @@ export const isSmartCopperPourResponseMessage = (value: unknown): value is Smart
 	return false;
 };
 
+export const isSmartCopperPourEventMessage = (value: unknown): value is SmartCopperPourEventMessage => {
+	if (typeof value !== 'object' || value === null || !('type' in value)) {
+		return false;
+	}
+
+	return (value as { type?: unknown }).type === 'selectionChanged';
+};
+
 const isSmartCopperPourRequestBase = (value: unknown): value is SmartCopperPourRequestBase => {
 	if (typeof value !== 'object' || value === null) {
 		return false;
@@ -364,15 +429,118 @@ const isSmartCopperPourRequestBase = (value: unknown): value is SmartCopperPourR
 		(request.maxWidth === undefined || isFiniteNumber(request.maxWidth)) &&
 		(request.widthStep === undefined || isFiniteNumber(request.widthStep)) &&
 		(request.obstacleMargin === undefined || isFiniteNumber(request.obstacleMargin)) &&
-		(request.trunkBias === undefined ||
-			request.trunkBias === 'neutral' ||
-			request.trunkBias === 'horizontal' ||
-			request.trunkBias === 'vertical') &&
-		(request.cornerStyle === undefined ||
-			request.cornerStyle === 'round' ||
-			request.cornerStyle === 'miter' ||
-			request.cornerStyle === 'bevel')
+		(request.selectionPrimitives === undefined || isSmartCopperPourSelectedPrimitiveArray(request.selectionPrimitives)) &&
+		isSmartCopperPourTrunkBias(request.trunkBias) &&
+		isSmartCopperPourCornerStyle(request.cornerStyle)
 	);
+};
+
+const isSmartCopperPourInspectSelectionRequest = (value: unknown): value is SmartCopperPourInspectSelectionRequest => {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const request = value as { selectionPrimitives?: unknown };
+	return request.selectionPrimitives === undefined || isSmartCopperPourSelectedPrimitiveArray(request.selectionPrimitives);
+};
+
+const isSmartCopperPourSelectedPrimitiveArray = (value: unknown): value is readonly SmartCopperPourSelectedPrimitive[] => {
+	return Array.isArray(value) && value.every(isSmartCopperPourSelectedPrimitive);
+};
+
+const isSmartCopperPourSelectedPrimitive = (value: unknown): value is SmartCopperPourSelectedPrimitive => {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const primitive = value as {
+		id?: unknown;
+		type?: unknown;
+		net?: unknown;
+		layer?: unknown;
+		x?: unknown;
+		y?: unknown;
+		width?: unknown;
+		height?: unknown;
+		padRadius?: unknown;
+		holeRadius?: unknown;
+		layerSpan?: unknown;
+	};
+	if (typeof primitive.id !== 'string') {
+		return false;
+	}
+
+	switch (primitive.type) {
+		case 'PAD':
+			return isSmartCopperPourSelectedPadPrimitive(primitive);
+		case 'VIA':
+			return isSmartCopperPourSelectedViaPrimitive(primitive);
+		case 'VIA_UNSUPPORTED':
+			return isSmartCopperPourSelectedUnsupportedViaPrimitive(primitive);
+		case 'OTHER':
+			return true;
+		default:
+			return false;
+	}
+};
+
+const isSmartCopperPourSelectedPadPrimitive = (primitive: {
+	net?: unknown;
+	layer?: unknown;
+	x?: unknown;
+	y?: unknown;
+	width?: unknown;
+	height?: unknown;
+	padRadius?: unknown;
+	holeRadius?: unknown;
+}): boolean => {
+	return (
+		isNullableString(primitive.net) &&
+		isNullableString(primitive.layer) &&
+		isFiniteNumber(primitive.x) &&
+		isFiniteNumber(primitive.y) &&
+		isNullableFiniteNumber(primitive.width) &&
+		isNullableFiniteNumber(primitive.height) &&
+		isNullableFiniteNumber(primitive.padRadius) &&
+		isNullableFiniteNumber(primitive.holeRadius)
+	);
+};
+
+const isSmartCopperPourSelectedViaPrimitive = (primitive: {
+	net?: unknown;
+	x?: unknown;
+	y?: unknown;
+	padRadius?: unknown;
+	layerSpan?: unknown;
+}): boolean => {
+	return (
+		isNullableString(primitive.net) &&
+		isFiniteNumber(primitive.x) &&
+		isFiniteNumber(primitive.y) &&
+		isNullableFiniteNumber(primitive.padRadius) &&
+		isSmartCopperPourViaLayerSpan(primitive.layerSpan)
+	);
+};
+
+const isSmartCopperPourSelectedUnsupportedViaPrimitive = (primitive: { net?: unknown; x?: unknown; y?: unknown }): boolean => {
+	return isNullableString(primitive.net) && isFiniteNumber(primitive.x) && isFiniteNumber(primitive.y);
+};
+
+const isSmartCopperPourViaLayerSpan = (value: unknown): value is SmartCopperPourViaLayerSpan => {
+	if (typeof value !== 'object' || value === null) {
+		return false;
+	}
+
+	const layerSpan = value as { startLayer?: unknown; endLayer?: unknown };
+	return typeof layerSpan.startLayer === 'string' && typeof layerSpan.endLayer === 'string';
+};
+
+const isSmartCopperPourTrunkBias = (value: unknown): value is SmartCopperPourTrunkBias | undefined => {
+	return value === undefined || value === 'neutral' || value === 'horizontal' || value === 'vertical';
+};
+
+const isSmartCopperPourCornerStyle = (value: unknown): value is SmartCopperPourCornerStyle | undefined => {
+	return value === undefined || value === 'round' || value === 'miter' || value === 'bevel';
 };
 
 const isSmartCopperPourApplyRequest = (value: unknown): value is SmartCopperPourApplyRequest => {
@@ -429,11 +597,7 @@ const isSmartCopperPourErrorPayload = (value: unknown): value is SmartCopperPour
 	}
 
 	const error = value as { code?: unknown; message?: unknown; details?: unknown };
-	return (
-		typeof error.code === 'string' &&
-		typeof error.message === 'string' &&
-		(error.details === undefined || typeof error.details === 'string')
-	);
+	return typeof error.code === 'string' && typeof error.message === 'string' && (error.details === undefined || typeof error.details === 'string');
 };
 
 const isTrunkPoint = (value: unknown): value is SmartCopperPourTrunkPoint => {
@@ -446,3 +610,7 @@ const isTrunkPoint = (value: unknown): value is SmartCopperPourTrunkPoint => {
 };
 
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+const isNullableFiniteNumber = (value: unknown): value is number | null => value === null || isFiniteNumber(value);
+
+const isNullableString = (value: unknown): value is string | null => value === null || typeof value === 'string';

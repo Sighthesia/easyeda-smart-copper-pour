@@ -1,15 +1,20 @@
 import {
-	SMART_COPPER_POUR_RESPONSE_TOPIC,
 	SMART_COPPER_POUR_REQUEST_TOPIC,
-	isSmartCopperPourRequestMessage,
+	SMART_COPPER_POUR_RESPONSE_TOPIC,
 	type SmartCopperPourApplyRequest,
 	type SmartCopperPourApplyResult,
 	type SmartCopperPourClearPreviewResult,
+	type SmartCopperPourInspectSelectionRequest,
 	type SmartCopperPourPreviewRequest,
 	type SmartCopperPourPreviewResult,
 	type SmartCopperPourSelectionSummary,
+	isSmartCopperPourRequestMessage,
 } from '../../application/smart-copper-pour-contract';
-import { handleSmartCopperPourMessage, type SmartCopperPourMessageDispatcherController } from '../../application/smart-copper-pour-message-dispatcher';
+import {
+	type SmartCopperPourMessageDispatcherController,
+	handleSmartCopperPourMessage,
+} from '../../application/smart-copper-pour-message-dispatcher';
+import { logSmartCopperPourError, logSmartCopperPourInfo } from './runtime-log';
 
 /**
  * Minimal message bus contract used by the iframe bridge.
@@ -17,8 +22,8 @@ import { handleSmartCopperPourMessage, type SmartCopperPourMessageDispatcherCont
  * @public
  */
 export interface SmartCopperPourMessageBus {
-	publish(topic: string, message: unknown): void;
-	subscribe(topic: string, handler: (message: unknown) => void): ISYS_MessageBusTask;
+	publish: (topic: string, message: unknown) => void;
+	subscribe: (topic: string, handler: (message: unknown) => void) => ISYS_MessageBusTask;
 }
 
 /**
@@ -27,10 +32,10 @@ export interface SmartCopperPourMessageBus {
  * @public
  */
 export interface SmartCopperPourMessageBridgeController extends SmartCopperPourMessageDispatcherController {
-	inspectSelection(): Promise<SmartCopperPourSelectionSummary>;
-	preview(request: SmartCopperPourPreviewRequest): Promise<SmartCopperPourPreviewResult>;
-	apply(request: SmartCopperPourApplyRequest): Promise<SmartCopperPourApplyResult>;
-	clearPreview(): Promise<SmartCopperPourClearPreviewResult>;
+	inspectSelection: (request?: SmartCopperPourInspectSelectionRequest) => Promise<SmartCopperPourSelectionSummary>;
+	preview: (request: SmartCopperPourPreviewRequest) => Promise<SmartCopperPourPreviewResult>;
+	apply: (request: SmartCopperPourApplyRequest) => Promise<SmartCopperPourApplyResult>;
+	clearPreview: () => Promise<SmartCopperPourClearPreviewResult>;
 }
 
 /**
@@ -39,7 +44,7 @@ export interface SmartCopperPourMessageBridgeController extends SmartCopperPourM
  * @public
  */
 export interface SmartCopperPourMessageBusBridge {
-	dispose(): void;
+	dispose: () => void;
 }
 
 /**
@@ -66,8 +71,14 @@ export const registerSmartCopperPourMessageBusBridge = (
 		}
 
 		const requestMessage = message;
+		logSmartCopperPourInfo(requestMessage.command, 'Received iframe request.');
 
-		void handleSmartCopperPourMessage(controller, requestMessage).then((responseMessage) => {
+		handleSmartCopperPourMessage(controller, requestMessage).then((responseMessage) => {
+			if (responseMessage.ok) {
+				logSmartCopperPourInfo(responseMessage.command, 'Publishing runtime response to iframe.');
+			} else {
+				logSmartCopperPourError(responseMessage.command, responseMessage.error.message);
+			}
 			messageBus.publish(SMART_COPPER_POUR_RESPONSE_TOPIC, responseMessage);
 		});
 	});

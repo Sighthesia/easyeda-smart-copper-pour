@@ -1,11 +1,13 @@
 import { describe, expect, test, vi } from 'vitest';
 
-import {
-	SmartCopperPourController,
-	type SmartCopperPourPreviewOptimizationRequest,
-} from '../../src/application/smart-copper-pour-controller';
+import type { SmartCopperPourPreviewRequest } from '../../src/application/smart-copper-pour-contract';
+import { SmartCopperPourController } from '../../src/application/smart-copper-pour-controller';
 import { TopologyMode } from '../../src/domain/topology-mode';
 import { createSmartCopperPourSelectionInspector } from '../../src/infrastructure/lceda/selection-inspector';
+
+type SmartCopperPourPreviewOptimizationTestRequest = Parameters<SmartCopperPourController['preview']>[0] & {
+	padNodes: Array<{ id: string; net: string; layer: string; center: { x: number; y: number }; effectiveRadius: number }>;
+};
 
 const createPreviewRequest = () => ({
 	topologyMode: TopologyMode.Tree as const,
@@ -58,13 +60,42 @@ describe('SmartCopperPourController', () => {
 		});
 	});
 
+	test('returns a live summary for a single selected via', async () => {
+		const controller = new SmartCopperPourController({
+			selectionInspector: createSmartCopperPourSelectionInspector({
+				readSelectedPrimitives: async () => [
+					{
+						id: 'via-only',
+						type: 'VIA',
+						net: 'VCC',
+						x: 20,
+						y: 30,
+						layerSpan: { startLayer: 'TopLayer', endLayer: 'BottomLayer' },
+						padRadius: 0.8,
+					},
+				],
+			}),
+			previewGateway: {
+				preview: async () => ({ previewToken: 'preview-1' }),
+				clearPreview: async () => ({ cleared: true }),
+			},
+			applyGateway: {
+				apply: async () => ({ applied: true }),
+			},
+		});
+
+		await expect(controller.inspectSelection()).resolves.toEqual({
+			connectionCount: 1,
+			layerName: 'TopLayer',
+			netName: 'VCC',
+			selectionFingerprint: expect.any(String),
+		});
+	});
+
 	test('keeps selectionFingerprint stable for the same normalized nodes', async () => {
 		const selectedPrimitives = createSelectedPrimitives();
 		const reversedSelectedPrimitives = [...selectedPrimitives].reverse();
-		const inspectSelection = vi
-			.fn()
-			.mockResolvedValueOnce(selectedPrimitives)
-			.mockResolvedValueOnce(reversedSelectedPrimitives);
+		const inspectSelection = vi.fn().mockResolvedValueOnce(selectedPrimitives).mockResolvedValueOnce(reversedSelectedPrimitives);
 		const selectionInspector = createSmartCopperPourSelectionInspector({
 			readSelectedPrimitives: inspectSelection,
 		});
@@ -104,8 +135,30 @@ describe('SmartCopperPourController', () => {
 		const secondController = new SmartCopperPourController({
 			selectionInspector: createSmartCopperPourSelectionInspector({
 				readSelectedPrimitives: async () => [
-					{ id: 'pad-y', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 300, y: 400, width: null, height: null, padRadius: 1.2, holeRadius: null },
-					{ id: 'pad-x', type: 'PAD', net: 'VCC', layer: 'TopLayer', x: 100, y: 200, width: null, height: null, padRadius: 1, holeRadius: null },
+					{
+						id: 'pad-y',
+						type: 'PAD',
+						net: 'VCC',
+						layer: 'TopLayer',
+						x: 300,
+						y: 400,
+						width: null,
+						height: null,
+						padRadius: 1.2,
+						holeRadius: null,
+					},
+					{
+						id: 'pad-x',
+						type: 'PAD',
+						net: 'VCC',
+						layer: 'TopLayer',
+						x: 100,
+						y: 200,
+						width: null,
+						height: null,
+						padRadius: 1,
+						holeRadius: null,
+					},
 					{
 						id: 'via-x',
 						type: 'VIA',
@@ -222,7 +275,7 @@ describe('SmartCopperPourController', () => {
 	test('clears a stale cached preview token when the next preview fails', async () => {
 		const apply = vi.fn(async () => ({ applied: true }));
 		const preview = vi
-			.fn<(_: ReturnType<typeof createPreviewRequest>) => Promise<{ previewToken: string | null }>>()
+			.fn<(_: SmartCopperPourPreviewRequest) => Promise<{ previewToken: string | null }>>()
 			.mockResolvedValueOnce({ previewToken: 'preview-1' })
 			.mockRejectedValueOnce(new Error('preview failed'));
 		const controller = new SmartCopperPourController({
@@ -353,7 +406,7 @@ describe('SmartCopperPourController', () => {
 			},
 		});
 
-		await controller.preview({
+		const optimizedPreviewRequest: SmartCopperPourPreviewOptimizationTestRequest = {
 			...createPreviewRequest(),
 			autoExpand: true,
 			maxWidth: 6,
@@ -363,7 +416,9 @@ describe('SmartCopperPourController', () => {
 				{ id: 'pad-a', net: 'VCC', layer: 'TopLayer', center: { x: 0, y: 0 }, effectiveRadius: 1 },
 				{ id: 'pad-b', net: 'VCC', layer: 'TopLayer', center: { x: 10, y: 0 }, effectiveRadius: 1 },
 			],
-		} as SmartCopperPourPreviewOptimizationRequest);
+		};
+
+		await controller.preview(optimizedPreviewRequest);
 
 		expect(resolveObstacles).toHaveBeenCalledOnce();
 		expect(preview).toHaveBeenCalledWith({
@@ -394,7 +449,7 @@ describe('SmartCopperPourController', () => {
 		}));
 
 		vi.doMock('../../src/domain/daisy-chain-planner', async () => {
-			const actual = await vi.importActual<typeof import('../../src/domain/daisy-chain-planner')>('../../src/domain/daisy-chain-planner');
+			const actual = await vi.importActual('../../src/domain/daisy-chain-planner');
 			return {
 				...actual,
 				planDaisyChainBackbone,
@@ -402,9 +457,7 @@ describe('SmartCopperPourController', () => {
 		});
 
 		try {
-			const { SmartCopperPourController: MockedSmartCopperPourController } = await import(
-				'../../src/application/smart-copper-pour-controller'
-			);
+			const { SmartCopperPourController: MockedSmartCopperPourController } = await import('../../src/application/smart-copper-pour-controller');
 			const preview = vi.fn(async () => ({ previewToken: 'preview-1' }));
 			const controller = new MockedSmartCopperPourController({
 				selectionInspector: {
@@ -422,7 +475,7 @@ describe('SmartCopperPourController', () => {
 				},
 			});
 
-			await controller.preview({
+			const optimizedPreviewRequest: SmartCopperPourPreviewOptimizationTestRequest = {
 				...createPreviewRequest(),
 				topologyMode: TopologyMode.DaisyChain,
 				trunkMode: 'manual',
@@ -435,16 +488,15 @@ describe('SmartCopperPourController', () => {
 					{ id: 'pad-a', net: 'VCC', layer: 'TopLayer', center: { x: 0, y: 0 }, effectiveRadius: 1 },
 					{ id: 'pad-b', net: 'VCC', layer: 'TopLayer', center: { x: 10, y: 0 }, effectiveRadius: 1 },
 				],
-			} as SmartCopperPourPreviewOptimizationRequest);
+			};
 
-			expect(planDaisyChainBackbone).toHaveBeenCalledWith(
-				expect.any(Array),
-				{
-					trunkMode: 'manual',
-					trunkStart: { x: 3, y: 1 },
-					trunkEnd: { x: 9, y: 1 },
-				},
-			);
+			await controller.preview(optimizedPreviewRequest);
+
+			expect(planDaisyChainBackbone).toHaveBeenCalledWith(expect.any(Array), {
+				trunkMode: 'manual',
+				trunkStart: { x: 3, y: 1 },
+				trunkEnd: { x: 9, y: 1 },
+			});
 			expect(preview).toHaveBeenCalledOnce();
 		} finally {
 			vi.doUnmock('../../src/domain/daisy-chain-planner');
