@@ -9,11 +9,24 @@ const createPad = (id: string, x: number, y: number): PadNode => ({
 	layer: 'TopLayer',
 	center: { x, y },
 	effectiveRadius: 1,
+	width: 2,
+	height: 2,
+	outlineShape: 'rect',
 });
 
 describe('star area planner', () => {
-	test('builds a convex hull by default', () => {
+	test('builds a convex hull from node outlines by default', () => {
 		const plan = planStarArea([createPad('pad-a', 0, 0), createPad('pad-b', 6, 0), createPad('pad-c', 2, 5), createPad('pad-d', 2, 2)]);
+
+		expect(plan.outline.vertices).toContainEqual({ x: -1, y: -1 });
+		expect(plan.outline.vertices).toContainEqual({ x: 7, y: -1 });
+		expect(plan.outline.vertices).toContainEqual({ x: 3, y: 6 });
+	});
+
+	test('supports center-based outlines when node size is disabled', () => {
+		const plan = planStarArea([createPad('pad-a', 0, 0), createPad('pad-b', 6, 0), createPad('pad-c', 2, 5)], {
+			useNodeSizeAsBaseWidth: false,
+		});
 
 		expect(plan.outline.vertices).toEqual([
 			{ x: 0, y: 0 },
@@ -26,10 +39,10 @@ describe('star area planner', () => {
 		const plan = planStarArea([createPad('pad-a', 0, 0), createPad('pad-b', 6, 0), createPad('pad-c', 2, 5)], { areaShape: 'boundingBox' });
 
 		expect(plan.outline.vertices).toEqual([
-			{ x: 0, y: 0 },
-			{ x: 6, y: 0 },
-			{ x: 6, y: 5 },
-			{ x: 0, y: 5 },
+			{ x: -1, y: -1 },
+			{ x: 7, y: -1 },
+			{ x: 7, y: 6 },
+			{ x: -1, y: 6 },
 		]);
 	});
 });

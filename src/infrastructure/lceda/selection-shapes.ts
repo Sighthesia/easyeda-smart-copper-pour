@@ -1,4 +1,4 @@
-interface LcedaPadPrimitiveShape {
+export interface LcedaPadPrimitiveShape {
 	getState_PrimitiveId: () => string;
 	getState_Pad: () => [unknown, number, number] | [unknown, number, number, number] | [unknown, unknown] | undefined;
 	getState_Hole: () => [unknown, number, number] | null;

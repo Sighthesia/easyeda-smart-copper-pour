@@ -47,6 +47,7 @@ export interface SmartCopperPourSelectedPadPrimitive {
 	layer: string | null;
 	x: number;
 	y: number;
+	padShape?: string | null;
 	width: number | null;
 	height: number | null;
 	padRadius: number | null;
@@ -446,6 +447,7 @@ const isSmartCopperPourSelectedPrimitive = (value: unknown): value is SmartCoppe
 		layer?: unknown;
 		x?: unknown;
 		y?: unknown;
+		padShape?: unknown;
 		width?: unknown;
 		height?: unknown;
 		padRadius?: unknown;
@@ -475,6 +477,7 @@ const isSmartCopperPourSelectedPadPrimitive = (primitive: {
 	layer?: unknown;
 	x?: unknown;
 	y?: unknown;
+	padShape?: unknown;
 	width?: unknown;
 	height?: unknown;
 	padRadius?: unknown;
@@ -485,6 +488,7 @@ const isSmartCopperPourSelectedPadPrimitive = (primitive: {
 		isNullableString(primitive.layer) &&
 		isFiniteNumber(primitive.x) &&
 		isFiniteNumber(primitive.y) &&
+		isNullableString(primitive.padShape) &&
 		isNullableFiniteNumber(primitive.width) &&
 		isNullableFiniteNumber(primitive.height) &&
 		isNullableFiniteNumber(primitive.padRadius) &&

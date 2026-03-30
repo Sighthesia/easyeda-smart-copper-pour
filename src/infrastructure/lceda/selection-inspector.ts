@@ -7,7 +7,7 @@ import { type SmartCopperPourSelectionInspector, createSmartCopperPourSelectionS
 import { toLcedaLayerName } from './layer-name';
 import { normalizeLcedaSelectionPrimitives } from './selection-expander';
 import { type LcedaSelectablePrimitive, resolveSelectionSummaryNodes } from './selection-resolver';
-import { isLcedaPadPrimitive } from './selection-shapes';
+import { type LcedaPadPrimitiveShape, isLcedaPadPrimitive } from './selection-shapes';
 
 interface LcedaPadSelectablePrimitive extends LcedaSelectablePrimitive {
 	type: 'PAD';
@@ -15,6 +15,7 @@ interface LcedaPadSelectablePrimitive extends LcedaSelectablePrimitive {
 	layer: string | null;
 	x: number;
 	y: number;
+	padShape?: string | null;
 	width: number | null;
 	height: number | null;
 	padRadius: number | null;
@@ -121,16 +122,7 @@ const readRuntimeSelectedPrimitives = async (runtime: LcedaSelectionRuntime): Pr
 
 const toSelectablePrimitive = (primitive: IPCB_Primitive): LcedaInspectedSelectablePrimitive => {
 	if (isSupportedLcedaViaPrimitive(primitive)) {
-		const diameter = typeof primitive.getState_Diameter === 'function' ? primitive.getState_Diameter() : null;
-		return {
-			id: primitive.getState_PrimitiveId(),
-			type: 'VIA',
-			net: primitive.getState_Net() ?? null,
-			x: primitive.getState_X(),
-			y: primitive.getState_Y(),
-			layerSpan: toLayerSpan(primitive.getState_StartLayer(), primitive.getState_EndLayer()),
-			padRadius: typeof diameter === 'number' && Number.isFinite(diameter) && diameter > 0 ? diameter / 2 : null,
-		};
+		return toViaSelectablePrimitive(primitive);
 	}
 
 	if (isUnsupportedLcedaViaPrimitive(primitive)) {
@@ -150,8 +142,26 @@ const toSelectablePrimitive = (primitive: IPCB_Primitive): LcedaInspectedSelecta
 		};
 	}
 
+	return toPadSelectablePrimitive(primitive);
+};
+
+const toViaSelectablePrimitive = (primitive: IPCB_Primitive & LcedaViaPrimitiveShape): LcedaViaSelectablePrimitive => {
+	const diameter = typeof primitive.getState_Diameter === 'function' ? primitive.getState_Diameter() : null;
+	return {
+		id: primitive.getState_PrimitiveId(),
+		type: 'VIA',
+		net: primitive.getState_Net() ?? null,
+		x: primitive.getState_X(),
+		y: primitive.getState_Y(),
+		layerSpan: toLayerSpan(primitive.getState_StartLayer(), primitive.getState_EndLayer()),
+		padRadius: typeof diameter === 'number' && Number.isFinite(diameter) && diameter > 0 ? diameter / 2 : null,
+	};
+};
+
+const toPadSelectablePrimitive = (primitive: IPCB_Primitive & LcedaPadPrimitiveShape): LcedaPadSelectablePrimitive => {
 	const padShape = primitive.getState_Pad();
 	const holeShape = primitive.getState_Hole();
+	const padShapeType = Array.isArray(padShape) && typeof padShape[0] === 'string' ? padShape[0] : null;
 	const width = Array.isArray(padShape) && typeof padShape[1] === 'number' ? padShape[1] : null;
 	const height = Array.isArray(padShape) && typeof padShape[2] === 'number' ? padShape[2] : width;
 	const holeRadius = Array.isArray(holeShape) && typeof holeShape[1] === 'number' ? holeShape[1] / 2 : null;
@@ -163,6 +173,7 @@ const toSelectablePrimitive = (primitive: IPCB_Primitive): LcedaInspectedSelecta
 		layer: toLcedaLayerName(primitive.getState_Layer()),
 		x: primitive.getState_X(),
 		y: primitive.getState_Y(),
+		padShape: padShapeType,
 		width,
 		height,
 		padRadius: width !== null && height !== null ? Math.max(width, height) / 2 : null,

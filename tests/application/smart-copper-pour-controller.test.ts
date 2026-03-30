@@ -326,7 +326,33 @@ describe('SmartCopperPourController', () => {
 		});
 	});
 
-	test('rejects preview requests with a non-positive width', async () => {
+	test('accepts preview requests with a zero additional width', async () => {
+		const preview = vi.fn(async () => ({ previewToken: 'preview-1' }));
+		const controller = new SmartCopperPourController({
+			selectionInspector: {
+				inspectSelection: async () => createSelectionSummary(),
+			},
+			previewGateway: {
+				preview,
+				clearPreview: async () => ({ cleared: true }),
+			},
+			applyGateway: {
+				apply: async () => ({ applied: true }),
+			},
+		});
+
+		await controller.preview({
+			...createPreviewRequest(),
+			width: 0,
+		});
+
+		expect(preview).toHaveBeenCalledWith({
+			...createPreviewRequest(),
+			width: 0,
+		});
+	});
+
+	test('rejects preview requests with a negative width', async () => {
 		const controller = new SmartCopperPourController({
 			selectionInspector: {
 				inspectSelection: async () => createSelectionSummary(),
@@ -343,11 +369,11 @@ describe('SmartCopperPourController', () => {
 		await expect(
 			controller.preview({
 				...createPreviewRequest(),
-				width: 0,
+				width: -0.1,
 			}),
 		).rejects.toMatchObject({
 			code: 'invalid-width',
-			message: 'Width must be greater than 0.',
+			message: 'Width must be 0 or greater.',
 		});
 	});
 

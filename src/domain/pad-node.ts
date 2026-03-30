@@ -11,4 +11,7 @@ export interface PadNode {
 	layer: string;
 	center: SkeletonPoint;
 	effectiveRadius: number;
+	width?: number;
+	height?: number;
+	outlineShape?: 'ellipse' | 'rect';
 }

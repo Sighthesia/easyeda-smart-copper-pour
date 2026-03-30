@@ -101,8 +101,8 @@ export const readSmartCopperPourRequest = (form: SmartCopperPourFormElement): Sm
 	}
 
 	const width = Number(form.width.value);
-	if (!Number.isFinite(width) || width <= 0) {
-		return { ok: false, errorMessage: '宽度必须大于 0。' };
+	if (!Number.isFinite(width) || width < 0) {
+		return { ok: false, errorMessage: '附加宽度必须大于等于 0。' };
 	}
 
 	const keepoutMargin = Number(form.keepoutMargin.value);

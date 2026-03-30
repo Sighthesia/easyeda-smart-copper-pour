@@ -181,7 +181,7 @@ export class SmartCopperPourController {
 
 		return {
 			...request,
-			width: Math.max(optimized.width - baseWidth, 0.01),
+			width: Math.max(optimized.width - baseWidth, 0),
 		};
 	}
 
@@ -199,8 +199,8 @@ export class SmartCopperPourController {
 }
 
 const validateSmartCopperPourRequest = (request: SmartCopperPourPreviewRequest | SmartCopperPourApplyRequest): void => {
-	if (request.width <= 0) {
-		throw new SmartCopperPourValidationError('invalid-width', 'Width must be greater than 0.');
+	if (request.width < 0) {
+		throw new SmartCopperPourValidationError('invalid-width', 'Width must be 0 or greater.');
 	}
 
 	if (request.keepoutMargin < 0) {
@@ -292,9 +292,12 @@ export const createSelectionFingerprint = (normalizedNodes: ReadonlyArray<PadNod
 					y: node.center.y,
 				},
 				effectiveRadius: node.effectiveRadius,
+				height: node.height,
 				id: node.id,
 				layer: node.layer,
 				net: node.net,
+				outlineShape: node.outlineShape,
+				width: node.width,
 			}))
 			.sort((leftNode, rightNode) => {
 				return JSON.stringify(leftNode).localeCompare(JSON.stringify(rightNode));

@@ -2,10 +2,12 @@ import type { SmartCopperPourPreviewRequest } from '../../application/smart-copp
 import { resolveFinalCopperWidth } from '../../domain/copper-width';
 import { planDaisyChainBackbone } from '../../domain/daisy-chain-planner';
 import { planOrthogonalTreeBackbone } from '../../domain/orthogonal-tree-planner';
+import { buildPadNodeOutline } from '../../domain/pad-node-outline';
 import type { SkeletonPolygon, SkeletonSegment } from '../../domain/skeleton-types';
 import { planStarArea } from '../../domain/star-area-planner';
 import { planStarBackbone } from '../../domain/star-backbone-planner';
 import { planTreeBackbone } from '../../domain/tree-backbone-planner';
+import { unionSkeletonPolygons } from '../geometry/polygon-boolean';
 import { buildClosedPolygonOffsetPolygons, buildSkeletonOffsetPolygons } from '../geometry/polygon-offset-builder';
 import { isSupportedLcedaCopperLayerId, toLcedaLayerId } from './layer-name';
 import { type LcedaSelectedPrimitivesReader, createLcedaSelectedPrimitivesReader, normalizeSelectedSnapshotPrimitives } from './selection-inspector';
@@ -84,16 +86,44 @@ const resolveCopperPolygons = (
 	width: number,
 ): ReadonlyArray<SkeletonPolygon> => {
 	if (request.topologyMode === 'star') {
+		const outline = planStarArea(padNodes, {
+			areaShape: request.starAreaShape,
+			useNodeSizeAsBaseWidth: request.useNodeSizeAsBaseWidth,
+		}).outline;
+		const offsetWidth = request.useNodeSizeAsBaseWidth === false ? width : request.width;
+		if (offsetWidth <= 0) {
+			return unionSkeletonPolygons([outline]);
+		}
+
 		return buildClosedPolygonOffsetPolygons({
-			polygon: planStarArea(padNodes, { areaShape: request.starAreaShape }).outline,
-			width,
+			polygon: outline,
+			width: offsetWidth,
 			cornerStyle: request.cornerStyle,
 		});
 	}
 
-	return buildSkeletonOffsetPolygons({
+	const segmentPolygons = buildSkeletonOffsetPolygons({
 		segments: resolveSkeletonSegments(padNodes, request),
 		width,
 		cornerStyle: request.cornerStyle,
 	});
+	if (request.useNodeSizeAsBaseWidth === false) {
+		return segmentPolygons;
+	}
+
+	return unionSkeletonPolygons([
+		...segmentPolygons,
+		...padNodes.flatMap((padNode) => {
+			const outline = buildPadNodeOutline(padNode);
+			if (request.width <= 0) {
+				return [outline];
+			}
+
+			return buildClosedPolygonOffsetPolygons({
+				polygon: outline,
+				width: request.width,
+				cornerStyle: request.cornerStyle,
+			});
+		}),
+	]);
 };

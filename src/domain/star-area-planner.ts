@@ -1,5 +1,6 @@
 import type { SmartCopperPourStarAreaShape } from '../application/smart-copper-pour-contract';
 import type { PadNode } from './pad-node';
+import { buildPadNodeOutline } from './pad-node-outline';
 import type { SkeletonPoint, SkeletonPolygon } from './skeleton-types';
 
 export interface StarAreaPlan {
@@ -8,12 +9,16 @@ export interface StarAreaPlan {
 
 export interface StarAreaPlanOptions {
 	areaShape?: SmartCopperPourStarAreaShape;
+	useNodeSizeAsBaseWidth?: boolean;
 }
 
 const MINIMUM_HALF_EXTENT = 0.001;
 
 export const planStarArea = (pads: ReadonlyArray<PadNode>, options: StarAreaPlanOptions = {}): StarAreaPlan => {
-	const uniquePoints = dedupePoints(pads.map((pad) => pad.center));
+	const uniquePoints =
+		options.useNodeSizeAsBaseWidth === false
+			? dedupePoints(pads.map((pad) => pad.center))
+			: dedupePoints(pads.flatMap((pad) => buildPadNodeOutline(pad).vertices));
 	const areaShape = options.areaShape ?? 'convexHull';
 	const outline = areaShape === 'boundingBox' ? buildBoundingBox(uniquePoints) : buildConvexHull(uniquePoints);
 

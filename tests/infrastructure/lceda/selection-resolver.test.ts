@@ -88,6 +88,9 @@ describe('resolveSelectedPadNodes', () => {
 				layer: 'TopLayer',
 				center: { x: 1, y: 2 },
 				effectiveRadius: 1.2,
+				width: 2.4,
+				height: 2.4,
+				outlineShape: 'ellipse',
 			},
 			{
 				id: 'via-1',
@@ -95,6 +98,9 @@ describe('resolveSelectedPadNodes', () => {
 				layer: 'TopLayer',
 				center: { x: 5, y: 6 },
 				effectiveRadius: 0.4,
+				width: 0.8,
+				height: 0.8,
+				outlineShape: 'ellipse',
 			},
 		]);
 	});
@@ -244,6 +250,9 @@ describe('resolveSelectedPadNodes', () => {
 				layer: 'TopLayer',
 				center: { x: 1, y: 2 },
 				effectiveRadius: 0.9,
+				width: 1.8,
+				height: 1.8,
+				outlineShape: 'ellipse',
 			},
 			{
 				id: 'pad-2',
@@ -251,6 +260,9 @@ describe('resolveSelectedPadNodes', () => {
 				layer: 'TopLayer',
 				center: { x: 5, y: 6 },
 				effectiveRadius: 1.1,
+				width: 2.2,
+				height: 2.2,
+				outlineShape: 'ellipse',
 			},
 		]);
 	});

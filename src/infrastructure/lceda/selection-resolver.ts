@@ -13,6 +13,7 @@ export interface LcedaSelectablePrimitive {
 	layerSpan?: LcedaViaLayerSpan | null;
 	x?: number;
 	y?: number;
+	padShape?: string | null;
 	padRadius?: number | null;
 	holeRadius?: number | null;
 	width?: number | null;
@@ -136,6 +137,9 @@ export const resolveSelectedPadNodes = (primitives: readonly LcedaSelectablePrim
 					y: primitive.y,
 				},
 				effectiveRadius: resolveEffectiveRadius(primitive),
+				width: resolvePrimitiveWidth(primitive),
+				height: resolvePrimitiveHeight(primitive),
+				outlineShape: resolvePadOutlineShape(primitive),
 			});
 			padCount += 1;
 			continue;
@@ -179,6 +183,9 @@ export const resolveSelectedPadNodes = (primitives: readonly LcedaSelectablePrim
 					y: primitive.y,
 				},
 				effectiveRadius: resolveViaEffectiveRadius(primitive),
+				width: resolvePrimitiveWidth(primitive),
+				height: resolvePrimitiveHeight(primitive),
+				outlineShape: 'ellipse',
 			});
 			continue;
 		}
@@ -247,6 +254,9 @@ export const resolveSelectionSummaryNodes = (primitives: readonly LcedaSelectabl
 					y: primitive.y,
 				},
 				effectiveRadius: resolveEffectiveRadius(primitive),
+				width: resolvePrimitiveWidth(primitive),
+				height: resolvePrimitiveHeight(primitive),
+				outlineShape: resolvePadOutlineShape(primitive),
 			});
 			continue;
 		}
@@ -271,6 +281,9 @@ export const resolveSelectionSummaryNodes = (primitives: readonly LcedaSelectabl
 					y: primitive.y,
 				},
 				effectiveRadius: resolveViaEffectiveRadius(primitive),
+				width: resolvePrimitiveWidth(primitive),
+				height: resolvePrimitiveHeight(primitive),
+				outlineShape: 'ellipse',
 			});
 			continue;
 		}
@@ -357,6 +370,9 @@ const finalizePendingVias = (
 					y: pendingVia.y,
 				},
 				effectiveRadius: resolveViaEffectiveRadius(pendingVia),
+				width: resolvePrimitiveWidth(pendingVia),
+				height: resolvePrimitiveHeight(pendingVia),
+				outlineShape: 'ellipse',
 			});
 			continue;
 		}
@@ -459,6 +475,34 @@ const resolveRadiusValue = (primitive: LcedaRadiusBearingPrimitive): number => {
 	const holeRadius = typeof primitive.holeRadius === 'number' && Number.isFinite(primitive.holeRadius) ? primitive.holeRadius : 0;
 	const effectiveRadius = Math.max(halfWidth, halfHeight, holeRadius);
 	return effectiveRadius;
+};
+
+const resolvePrimitiveWidth = (primitive: LcedaSelectablePrimitive): number | undefined => {
+	if (typeof primitive.width === 'number' && Number.isFinite(primitive.width) && primitive.width > 0) {
+		return primitive.width;
+	}
+
+	if (typeof primitive.padRadius === 'number' && Number.isFinite(primitive.padRadius) && primitive.padRadius > 0) {
+		return primitive.padRadius * 2;
+	}
+
+	return undefined;
+};
+
+const resolvePrimitiveHeight = (primitive: LcedaSelectablePrimitive): number | undefined => {
+	if (typeof primitive.height === 'number' && Number.isFinite(primitive.height) && primitive.height > 0) {
+		return primitive.height;
+	}
+
+	return resolvePrimitiveWidth(primitive);
+};
+
+const resolvePadOutlineShape = (primitive: LcedaSelectablePrimitive): 'ellipse' | 'rect' => {
+	if (typeof primitive.padShape === 'string') {
+		return primitive.padShape.toUpperCase() === 'ELLIPSE' ? 'ellipse' : 'rect';
+	}
+
+	return 'ellipse';
 };
 
 const doesViaSpanLayer = (layerSpan: LcedaViaLayerSpan, targetLayer: string): boolean => {
