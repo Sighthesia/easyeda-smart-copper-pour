@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-Hans">
 	<head>
-		<title>智能铜皮生成</title>
+		<title>一键智能铺铜</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<link rel="stylesheet" href="/iframe/index.css" />
@@ -10,8 +10,7 @@
 		<div class="app-shell">
 			<header class="toolbar">
 				<div class="toolbar-main">
-					<h1>智能铜皮生成</h1>
-					<p class="toolbar-subtitle">针对当前选中的同网络节点快速生成铜皮骨架。建议先预览，再确认应用。</p>
+					<h1>一键智能铺铜</h1>
 					<div class="toolbar-context status-card">
 						<div class="toolbar-context-item">
 							<span class="toolbar-context-label">网络</span>
@@ -34,7 +33,6 @@
 					<div class="panel-heading">
 						<div>
 							<h2>生成参数</h2>
-							<p class="panel-subtitle">不同拓扑适合不同走线风格。块状更聚合，树状更适合有主干的连接关系。</p>
 						</div>
 					</div>
 
@@ -43,18 +41,18 @@
 							<label class="field" for="topology-mode">
 								<span>拓扑模式</span>
 								<select id="topology-mode" name="topologyMode">
-									<option value="daisyChain" selected>树状</option>
-									<option value="star">块状</option>
+									<option value="daisyChain" selected>菊花链拓扑</option>
+									<option value="star">星形拓扑</option>
 								</select>
-								<small class="field-help">树状强调主干连接，块状强调整体覆盖。</small>
+								<small class="field-help">菊花链拓扑适合信号传输和空间受限场景，星形拓扑适合打大电流空间充足场景a</small>
 							</label>
 							<label class="field" for="star-area-shape" data-star-only hidden>
-								<span>块状区域</span>
+								<span>星形拓扑区域</span>
 								<select id="star-area-shape" name="starAreaShape">
 									<option value="convexHull" selected>凸包</option>
-									<option value="boundingBox">边界框</option>
+									<option value="boundingBox">矩形区块</option>
 								</select>
-								<small class="field-help">凸包更贴合节点轮廓，边界框更规则。</small>
+								<small class="field-help">凸包更贴合节点轮廓，矩形区块面积更大。</small>
 							</label>
 							<label class="field" for="corner-style">
 								<span>拐角样式</span>
@@ -73,12 +71,12 @@
 							<label class="field" for="keepout-margin">
 								<span>避让边距</span>
 								<input id="keepout-margin" name="keepoutMargin" type="number" min="0" step="0.1" value="0" />
-								<small class="field-help">增大后会与周边对象保持更安全的距离，但可能降低可通过性。</small>
+								<small class="field-help">增大后会与周边对象保持更安全的距离，但可能降低铜皮面积。</small>
 							</label>
 							<label class="toggle-field" for="use-node-size-as-base-width">
 								<span class="toggle-copy">
-									<span class="toggle-title">节点尺寸作为基础宽度</span>
-									<small class="field-help">适合节点尺寸差异较大时自动取更稳妥的宽度基准。</small>
+									<span class="toggle-title">焊盘尺寸作为基础宽度</span>
+									<small class="field-help">让铜皮完整覆盖焊盘。</small>
 								</span>
 								<input id="use-node-size-as-base-width" name="useNodeSizeAsBaseWidth" type="checkbox" checked />
 							</label>
