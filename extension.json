@@ -1,25 +1,25 @@
 {
 	"name": "smart-copper-pour",
 	"uuid": "20f9219c73b94287b27419b9d3e21c4e",
-	"displayName": "Smart Copper Pour",
-	"description": "LCEDA Smart Copper Pour extension with Tree / Star / Daisy Chain preview and apply",
-	"version": "1.1.1",
-	"publisher": "JLCEDA <support@lceda.cn>",
+	"displayName": "一键智能铺铜",
+	"description": "选中焊盘快速生成多种拓扑结构的铜皮",
+	"version": "1.0.0",
+	"publisher": "观象",
 	"engines": {
 		"eda": "^2.3.0"
 	},
 	"license": "Apache-2.0",
 	"repository": {
-		"type": "extension-store",
-		"url": ""
+		"type": "github",
+		"url": "https://github.com/Sighthesia/easyeda-history-diff-visualize.git"
 	},
 	"categories": "Other",
 	"keywords": ["Smart Copper Pour", "PCB", "Copper"],
 	"images": {
 		"logo": "./images/logo.png"
 	},
-	"homepage": "https://pro.lceda.cn",
-	"bugs": "https://lceda.cn/page/feedback?originPage=other",
+	"homepage": "https://github.com/Sighthesia/easyeda-history-diff-visualize",
+	"bugs": "https://github.com/Sighthesia/easyeda-history-diff-visualize/issues",
 	"activationEvents": {},
 	"entry": "./dist/index",
 	"dependentExtensions": {},
