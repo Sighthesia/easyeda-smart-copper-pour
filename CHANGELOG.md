@@ -1,4 +1,18 @@
-# Unreleased
+# 1.1.2
+
+## 变更
+
+1. 修复发布包内容，将开发辅助目录、测试目录和非发布文件排除在 `.eext` 之外
+2. 修正扩展清单中的仓库、主页和问题反馈地址，避免指向错误项目
+3. 调整扩展分类并补充 README 中的功能说明、使用步骤和适用场景
+
+# 1.1.1
+
+## 变更
+
+1. 为了符合隐私政策，禁止在 extension.json、README.md、CHANGELOG.md、LICENSE 内添加电子邮箱地址作为联系方式
+
+# 1.1.0
 
 ## 新增
 
@@ -11,23 +25,6 @@
 1. 收紧 Smart Copper Pour 公共消息契约，移除内部 preview token 对外暴露
 2. 补充控制器、桥接层、规划器与 writer 的自动化测试覆盖
 3. 说明 LCEDA `Region` / `Pour` 预览 / 落地已接入，但 API 仍受 BETA 版本行为影响
-
-# 1.1.1
-
-## 变更
-
-1. 为了符合隐私政策，禁止在 extension.json、README.md、CHANGELOG.md、LICENSE 内添加电子邮箱地址作为联系方式
-
-# 1.1.0
-
-## 新增
-
-1. 新增扩展注册头部菜单的多语言翻译支持
-2. 新增更新日志（CHANGELOG.md）
-
-## 变更
-
-1. 替换已弃用的方法（SYS_Dialog.showInformationMessage）
 
 # 1.0.0
 

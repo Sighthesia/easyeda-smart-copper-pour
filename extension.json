@@ -11,15 +11,15 @@
 	"license": "Apache-2.0",
 	"repository": {
 		"type": "github",
-		"url": "https://github.com/Sighthesia/easyeda-history-diff-visualize.git"
+		"url": "https://github.com/Sighthesia/easyeda-smart-copper-pour.git"
 	},
-	"categories": "Other",
+	"categories": "PCB",
 	"keywords": ["Smart Copper Pour", "PCB", "Copper"],
 	"images": {
 		"logo": "./images/logo.png"
 	},
-	"homepage": "https://github.com/Sighthesia/easyeda-history-diff-visualize",
-	"bugs": "https://github.com/Sighthesia/easyeda-history-diff-visualize/issues",
+	"homepage": "https://github.com/Sighthesia/easyeda-smart-copper-pour",
+	"bugs": "https://github.com/Sighthesia/easyeda-smart-copper-pour/issues",
 	"activationEvents": {},
 	"entry": "./dist/index",
 	"dependentExtensions": {},
