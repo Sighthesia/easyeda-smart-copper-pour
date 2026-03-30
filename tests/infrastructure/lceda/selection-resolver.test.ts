@@ -72,7 +72,7 @@ describe('resolveSelectedPadNodes', () => {
 	});
 
 	test('rejects a one-pad selection', () => {
-		expect(() => resolveSelectedPadNodes([createPad()])).toThrow('Select at least two pads on the same net.');
+		expect(() => resolveSelectedPadNodes([createPad()])).toThrow('最少选择两个焊盘才可进行铺铜.');
 	});
 
 	test('normalizes a pad plus via when the via spans the resolved target layer', () => {

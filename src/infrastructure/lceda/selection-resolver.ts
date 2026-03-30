@@ -92,7 +92,7 @@ export const resolveSelectedPadNodes = (primitives: readonly LcedaSelectablePrim
 	const allowViaOnlySelection = options.allowViaOnlySelection ?? false;
 
 	if (primitives.length === 0) {
-		throw new SelectionResolutionError('selection-empty', 'Select at least two pads before running Smart Copper Pour.');
+		throw new SelectionResolutionError('selection-empty', '最少选择两个焊盘才可进行铺铜');
 	}
 
 	const normalizedNodes: PadNode[] = [];

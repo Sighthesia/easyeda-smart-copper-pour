@@ -10,6 +10,7 @@ export interface StarAreaPlan {
 export interface StarAreaPlanOptions {
 	areaShape?: SmartCopperPourStarAreaShape;
 	useNodeSizeAsBaseWidth?: boolean;
+	nodeCornerStyle?: 'bevel45' | 'rightAngle' | 'round';
 }
 
 const MINIMUM_HALF_EXTENT = 0.001;
@@ -18,7 +19,7 @@ export const planStarArea = (pads: ReadonlyArray<PadNode>, options: StarAreaPlan
 	const uniquePoints =
 		options.useNodeSizeAsBaseWidth === false
 			? dedupePoints(pads.map((pad) => pad.center))
-			: dedupePoints(pads.flatMap((pad) => buildPadNodeOutline(pad).vertices));
+			: dedupePoints(pads.flatMap((pad) => buildPadNodeOutline(pad, { cornerStyle: options.nodeCornerStyle }).vertices));
 	const areaShape = options.areaShape ?? 'convexHull';
 	const outline = areaShape === 'boundingBox' ? buildBoundingBox(uniquePoints) : buildConvexHull(uniquePoints);
 

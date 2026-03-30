@@ -242,6 +242,7 @@ describe('createRuntimeCopperPlanBuilder', () => {
 		expect(rightAngle.polygons[0].vertices).toContainEqual({ x: 1, y: 5 });
 		expect(beveled.polygons[0].vertices).not.toContainEqual({ x: 7, y: 5 });
 		expect(beveled.polygons[0].vertices).not.toContainEqual({ x: 1, y: 5 });
+		expect(hasNoSharpConvexCorners(beveled.polygons[0], 120)).toBe(true);
 	});
 
 	test('builds daisy-chain polygons from an auto-derived orthogonal trunk', async () => {
@@ -271,6 +272,53 @@ describe('createRuntimeCopperPlanBuilder', () => {
 		const nonOrthogonalResult = await builder.buildWriterInput(createNonOrthogonalDaisyChainRequest());
 
 		expect(nonOrthogonalResult.polygons).not.toEqual(orthogonalResult.polygons);
+	});
+
+	test('keeps bevel45 free of sharp non-45 spikes in non-orthogonal routing', async () => {
+		const primitives = [
+			createPad({ id: 'pad-a', x: 1, y: 1, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+			createPad({ id: 'pad-b', x: 6, y: 4, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+			createPad({ id: 'pad-c', x: 8, y: -3, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+		] as const;
+		const builder = createRuntimeCopperPlanBuilder(createReader(primitives));
+
+		const result = await builder.buildWriterInput({
+			...createNonOrthogonalDaisyChainRequest(),
+			cornerStyle: 'bevel45',
+		});
+
+		expect(result.polygons).toHaveLength(1);
+		expect(hasNoSharpConvexCorners(result.polygons[0], 120)).toBe(true);
+	});
+
+	test('covers rectangular pads without sharp bevel spikes when additional width is small', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([
+				createPad({ id: 'pad-a', x: 0, y: 0, padShape: 'RECT', width: 8, height: 2, padRadius: 4 }),
+				createPad({ id: 'pad-b', x: 14, y: 0, padShape: 'RECT', width: 8, height: 2, padRadius: 4 }),
+			]),
+		);
+
+		const result = await builder.buildWriterInput({
+			...createDaisyChainRequest(),
+			width: 0.2,
+			cornerStyle: 'bevel45',
+		});
+
+		expect(result.polygons).toHaveLength(1);
+		for (const point of [
+			{ x: -4, y: -1 },
+			{ x: 4, y: -1 },
+			{ x: 4, y: 1 },
+			{ x: -4, y: 1 },
+			{ x: 10, y: -1 },
+			{ x: 18, y: -1 },
+			{ x: 18, y: 1 },
+			{ x: 10, y: 1 },
+		]) {
+			expect(isPointInsidePolygon(point, result.polygons[0])).toBe(true);
+		}
+		expect(hasNoSharpConvexCorners(result.polygons[0], 135)).toBe(true);
 	});
 
 	test('maps Inner30 to the last supported EasyEDA inner layer id', async () => {
@@ -327,4 +375,57 @@ const bounds = (polygons: ReadonlyArray<{ vertices: ReadonlyArray<{ x: number; y
 		minY: Math.min(...ys),
 		maxY: Math.max(...ys),
 	};
+};
+
+const hasNoSharpConvexCorners = (polygon: { vertices: ReadonlyArray<{ x: number; y: number }> }, minimumAngleDegrees: number): boolean => {
+	const area = polygon.vertices.reduce((sum, vertex, index) => {
+		const nextVertex = polygon.vertices[(index + 1) % polygon.vertices.length];
+		return sum + (vertex.x * nextVertex.y - nextVertex.x * vertex.y);
+	}, 0);
+	const windingSign = Math.sign(area) || 1;
+
+	for (let index = 0; index < polygon.vertices.length; index += 1) {
+		const previousVertex = polygon.vertices[(index - 1 + polygon.vertices.length) % polygon.vertices.length];
+		const currentVertex = polygon.vertices[index];
+		const nextVertex = polygon.vertices[(index + 1) % polygon.vertices.length];
+		const incomingX = previousVertex.x - currentVertex.x;
+		const incomingY = previousVertex.y - currentVertex.y;
+		const outgoingX = nextVertex.x - currentVertex.x;
+		const outgoingY = nextVertex.y - currentVertex.y;
+		const incomingLength = Math.hypot(incomingX, incomingY);
+		const outgoingLength = Math.hypot(outgoingX, outgoingY);
+		if (incomingLength < 0.001 || outgoingLength < 0.001) {
+			continue;
+		}
+
+		const cross = incomingX * outgoingY - incomingY * outgoingX;
+		const isConvex = windingSign > 0 ? cross < 0 : cross > 0;
+		if (!isConvex) {
+			continue;
+		}
+
+		const normalizedDot = (incomingX * outgoingX + incomingY * outgoingY) / (incomingLength * outgoingLength);
+		const angle = (Math.acos(Math.max(-1, Math.min(1, normalizedDot))) * 180) / Math.PI;
+		if (angle + 0.001 < minimumAngleDegrees) {
+			return false;
+		}
+	}
+
+	return true;
+};
+
+const isPointInsidePolygon = (point: { x: number; y: number }, polygon: { vertices: ReadonlyArray<{ x: number; y: number }> }): boolean => {
+	let inside = false;
+	for (let index = 0, previousIndex = polygon.vertices.length - 1; index < polygon.vertices.length; previousIndex = index, index += 1) {
+		const currentVertex = polygon.vertices[index];
+		const previousVertex = polygon.vertices[previousIndex];
+		const intersects =
+			currentVertex.y > point.y !== previousVertex.y > point.y &&
+			point.x < ((previousVertex.x - currentVertex.x) * (point.y - currentVertex.y)) / (previousVertex.y - currentVertex.y) + currentVertex.x;
+		if (intersects) {
+			inside = !inside;
+		}
+	}
+
+	return inside;
 };

@@ -29,6 +29,12 @@ export interface BuildClosedPolygonOffsetPolygonsOptions {
 	cornerStyle?: SmartCopperPourCornerStyle;
 }
 
+export interface BuildCornerStyledUnionPolygonsOptions {
+	polygons: ReadonlyArray<SkeletonPolygon>;
+	width: number;
+	cornerStyle?: SmartCopperPourCornerStyle;
+}
+
 /**
  * Strokes skeleton centerlines into one or more copper polygons.
  *
@@ -78,17 +84,117 @@ export const buildClosedPolygonOffsetPolygons = (options: BuildClosedPolygonOffs
 	);
 };
 
+export const buildCornerStyledUnionPolygons = (options: BuildCornerStyledUnionPolygonsOptions): SkeletonPolygon[] => {
+	const strokeRadius = options.width / 2;
+	const polygons = unionSkeletonPolygons(options.polygons);
+	const cornerStyle = options.cornerStyle ?? 'bevel45';
+	if (polygons.length === 0 || cornerStyle === 'rightAngle') {
+		return polygons;
+	}
+
+	if (cornerStyle === 'bevel45' && polygons.every(hasOnlyAxisAlignedEdges)) {
+		return unionSkeletonPolygons(polygons.map(bevelClosedPolygonCorners));
+	}
+
+	if (strokeRadius <= 0) {
+		return cornerStyle === 'bevel45' ? unionSkeletonPolygons(polygons.map(bevelClosedPolygonCorners)) : polygons;
+	}
+
+	const closedPolygons = offsetClosedPolygons(polygons, strokeRadius, cornerStyle);
+	if (closedPolygons.length === 0) {
+		return polygons;
+	}
+
+	const restoredPolygons = offsetClosedPolygons(closedPolygons, -strokeRadius, cornerStyle);
+	if (restoredPolygons.length === 0) {
+		return polygons;
+	}
+
+	const normalizedPolygons = unionSkeletonPolygons(restoredPolygons);
+	return cornerStyle === 'bevel45' ? unionSkeletonPolygons(normalizedPolygons.map(bevelClosedPolygonCorners)) : normalizedPolygons;
+};
+
 const strokePath = (path: ReadonlyArray<SkeletonPoint>, strokeRadius: number, cornerStyle: SmartCopperPourCornerStyle): SkeletonPolygon[] => {
 	if (path.length < 2) {
 		return [];
 	}
 
 	const offset = new ClipperLib.ClipperOffset();
-	offset.AddPath(path.map(toClipperPoint), resolveJoinType(cornerStyle), resolveEndType(cornerStyle));
+	offset.AddPath(path.map(toClipperPoint), resolveJoinType(cornerStyle), resolveEndType());
 
 	const solution = new ClipperLib.Paths();
 	offset.Execute(solution, scaleValue(strokeRadius));
 
+	return solution
+		.filter((path: ReadonlyArray<ClipperPoint>) => path.length >= 3)
+		.map((path: ReadonlyArray<ClipperPoint>) => ({
+			vertices: path.map(fromClipperPoint),
+		}));
+};
+
+const bevelClosedPolygonCorners = (polygon: SkeletonPolygon): SkeletonPolygon => {
+	if (polygon.vertices.length < 3) {
+		return polygon;
+	}
+
+	const beveledVertices: SkeletonPoint[] = [];
+	for (let index = 0; index < polygon.vertices.length; index += 1) {
+		const previousVertex = polygon.vertices[(index - 1 + polygon.vertices.length) % polygon.vertices.length];
+		const currentVertex = polygon.vertices[index];
+		const nextVertex = polygon.vertices[(index + 1) % polygon.vertices.length];
+
+		if (!isAxisAlignedCorner(previousVertex, currentVertex, nextVertex)) {
+			beveledVertices.push(currentVertex);
+			continue;
+		}
+
+		const previousLength = measureSegmentLength(previousVertex, currentVertex);
+		const nextLength = measureSegmentLength(currentVertex, nextVertex);
+		const inset = Math.min(previousLength, nextLength) / 2;
+		if (inset <= 0) {
+			beveledVertices.push(currentVertex);
+			continue;
+		}
+
+		beveledVertices.push(moveToward(currentVertex, previousVertex, inset));
+		beveledVertices.push(moveToward(currentVertex, nextVertex, inset));
+	}
+
+	return {
+		vertices: dedupeSequentialPoints(beveledVertices),
+	};
+};
+
+const hasOnlyAxisAlignedEdges = (polygon: SkeletonPolygon): boolean => {
+	for (let index = 0; index < polygon.vertices.length; index += 1) {
+		const start = polygon.vertices[index];
+		const end = polygon.vertices[(index + 1) % polygon.vertices.length];
+		const deltaX = end.x - start.x;
+		const deltaY = end.y - start.y;
+		if (!isApproximatelyZero(deltaX) && !isApproximatelyZero(deltaY)) {
+			return false;
+		}
+	}
+
+	return true;
+};
+
+const offsetClosedPolygons = (
+	polygons: ReadonlyArray<SkeletonPolygon>,
+	delta: number,
+	cornerStyle: SmartCopperPourCornerStyle,
+): SkeletonPolygon[] => {
+	const offset = new ClipperLib.ClipperOffset();
+	for (const polygon of polygons) {
+		if (polygon.vertices.length < 3) {
+			continue;
+		}
+
+		offset.AddPath(polygon.vertices.map(toClipperPoint), resolveJoinType(cornerStyle), ClipperLib.EndType.etClosedPolygon);
+	}
+
+	const solution = new ClipperLib.Paths();
+	offset.Execute(solution, scaleValue(delta));
 	return solution
 		.filter((path: ReadonlyArray<ClipperPoint>) => path.length >= 3)
 		.map((path: ReadonlyArray<ClipperPoint>) => ({
@@ -182,6 +288,35 @@ const dedupeSequentialPoints = (points: ReadonlyArray<SkeletonPoint>): SkeletonP
 
 const isZeroLengthSegment = (segment: SkeletonSegment): boolean => segment.start.x === segment.end.x && segment.start.y === segment.end.y;
 
+const isAxisAlignedCorner = (previousVertex: SkeletonPoint, currentVertex: SkeletonPoint, nextVertex: SkeletonPoint): boolean => {
+	const previousDeltaX = currentVertex.x - previousVertex.x;
+	const previousDeltaY = currentVertex.y - previousVertex.y;
+	const nextDeltaX = nextVertex.x - currentVertex.x;
+	const nextDeltaY = nextVertex.y - currentVertex.y;
+	const previousHorizontal = isApproximatelyZero(previousDeltaY) && !isApproximatelyZero(previousDeltaX);
+	const previousVertical = isApproximatelyZero(previousDeltaX) && !isApproximatelyZero(previousDeltaY);
+	const nextHorizontal = isApproximatelyZero(nextDeltaY) && !isApproximatelyZero(nextDeltaX);
+	const nextVertical = isApproximatelyZero(nextDeltaX) && !isApproximatelyZero(nextDeltaY);
+
+	return (previousHorizontal && nextVertical) || (previousVertical && nextHorizontal);
+};
+
+const measureSegmentLength = (start: SkeletonPoint, end: SkeletonPoint): number => Math.hypot(end.x - start.x, end.y - start.y);
+
+const moveToward = (start: SkeletonPoint, end: SkeletonPoint, distance: number): SkeletonPoint => {
+	const deltaX = end.x - start.x;
+	const deltaY = end.y - start.y;
+	const length = Math.hypot(deltaX, deltaY);
+	if (length === 0) {
+		return start;
+	}
+
+	return {
+		x: start.x + (deltaX / length) * distance,
+		y: start.y + (deltaY / length) * distance,
+	};
+};
+
 const pushEdge = (adjacency: Map<string, number[]>, pointKey: string, edgeIndex: number): void => {
 	const edgeIndexes = adjacency.get(pointKey);
 	if (edgeIndexes === undefined) {
@@ -206,11 +341,7 @@ const resolveJoinType = (cornerStyle: SmartCopperPourCornerStyle): number => {
 	}
 };
 
-const resolveEndType = (cornerStyle: SmartCopperPourCornerStyle): number => {
-	if (cornerStyle === 'round') {
-		return ClipperLib.EndType.etOpenRound;
-	}
-
+const resolveEndType = (): number => {
 	return ClipperLib.EndType.etOpenSquare;
 };
 
@@ -227,3 +358,5 @@ const fromClipperPoint = (point: ClipperPoint): SkeletonPoint => ({
 const scaleValue = (value: number): number => Math.round(value * CLIPPER_SCALE);
 
 const unscaleValue = (value: number): number => value / CLIPPER_SCALE;
+
+const isApproximatelyZero = (value: number): boolean => Math.abs(value) < 0.001;
