@@ -74,7 +74,7 @@ describe('createRuntimeCopperPlanBuilder', () => {
 	test('rejects empty selection through the resolver-backed builder flow', async () => {
 		const builder = createRuntimeCopperPlanBuilder(createReader([]));
 
-		await expect(builder.buildWriterInput(createTreeRequest())).rejects.toThrow('Select at least two pads before running Smart Copper Pour.');
+		await expect(builder.buildWriterInput(createTreeRequest())).rejects.toThrow('最少选择两个焊盘才可进行铺铜');
 	});
 
 	test('builds tree polygons from selected pads with node-size base width', async () => {
@@ -142,6 +142,106 @@ describe('createRuntimeCopperPlanBuilder', () => {
 			minY: -2,
 			maxY: 2,
 		});
+	});
+
+	test('keeps bevel45 node transitions visible for square pads', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([
+				createPad({ id: 'pad-a', x: 0, y: 0, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+				createPad({ id: 'pad-b', x: 8, y: 0, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+			]),
+		);
+
+		const result = await builder.buildWriterInput({
+			...createDaisyChainRequest(),
+			width: 2,
+			cornerStyle: 'bevel45',
+		});
+
+		expect(result.polygons).toHaveLength(1);
+		expect(bounds(result.polygons)).toEqual({
+			minX: -3,
+			maxX: 11,
+			minY: -3,
+			maxY: 3,
+		});
+		expect(result.polygons[0].vertices).toContainEqual({ x: -2.414, y: -3 });
+		expect(result.polygons[0].vertices).toContainEqual({ x: 10.414, y: 3 });
+	});
+
+	test('keeps round node transitions flat along the shared top edge', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([
+				createPad({ id: 'pad-a', x: 0, y: 0, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+				createPad({ id: 'pad-b', x: 8, y: 0, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+			]),
+		);
+
+		const result = await builder.buildWriterInput({
+			...createDaisyChainRequest(),
+			width: 2,
+			cornerStyle: 'round',
+		});
+
+		expect(result.polygons).toHaveLength(1);
+		const topEdgeVertices = result.polygons[0].vertices.filter((vertex) => Math.abs(vertex.y - 3) < 0.001);
+		const topXs = topEdgeVertices.map((vertex) => vertex.x).sort((left, right) => left - right);
+		expect(topXs[0]).toBeLessThan(-1.9);
+		expect(topXs[topXs.length - 1]).toBeGreaterThan(9.9);
+		expect(Math.max(...result.polygons[0].vertices.map((vertex) => vertex.y))).toBe(3);
+	});
+
+	test('applies corner style to square boundary pads even when additional width is zero', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([
+				createPad({ id: 'pad-a', x: 0, y: 0, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+				createPad({ id: 'pad-b', x: 8, y: 0, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+			]),
+		);
+
+		const result = await builder.buildWriterInput({
+			...createDaisyChainRequest(),
+			width: 0,
+			cornerStyle: 'bevel45',
+		});
+
+		expect(result.polygons).toHaveLength(1);
+		expect(bounds(result.polygons)).toEqual({
+			minX: -2,
+			maxX: 10,
+			minY: -2,
+			maxY: 2,
+		});
+		expect(result.polygons[0].vertices).not.toContainEqual({ x: -2, y: 2 });
+		expect(result.polygons[0].vertices).not.toContainEqual({ x: 10, y: 2 });
+		expect(result.polygons[0].vertices).toContainEqual({ x: -2, y: 0 });
+		expect(result.polygons[0].vertices).toContainEqual({ x: 10, y: 0 });
+	});
+
+	test('applies corner style to inner right angles in tree-like T regions', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([
+				createPad({ id: 'pad-a', x: 0, y: 0, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+				createPad({ id: 'pad-b', x: 8, y: 0, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+				createPad({ id: 'pad-c', x: 4, y: 6, padShape: 'RECT', width: 4, height: 4, padRadius: 2 }),
+			]),
+		);
+
+		const rightAngle = await builder.buildWriterInput({
+			...createDaisyChainRequest(),
+			width: 2,
+			cornerStyle: 'rightAngle',
+		});
+		const beveled = await builder.buildWriterInput({
+			...createDaisyChainRequest(),
+			width: 2,
+			cornerStyle: 'bevel45',
+		});
+
+		expect(rightAngle.polygons[0].vertices).toContainEqual({ x: 7, y: 5 });
+		expect(rightAngle.polygons[0].vertices).toContainEqual({ x: 1, y: 5 });
+		expect(beveled.polygons[0].vertices).not.toContainEqual({ x: 7, y: 5 });
+		expect(beveled.polygons[0].vertices).not.toContainEqual({ x: 1, y: 5 });
 	});
 
 	test('builds daisy-chain polygons from an auto-derived orthogonal trunk', async () => {

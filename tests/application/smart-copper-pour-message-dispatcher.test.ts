@@ -68,7 +68,7 @@ describe('handleSmartCopperPourMessage', () => {
 			handleSmartCopperPourMessage(
 				{
 					inspectSelection: async () => {
-						throw new SelectionResolutionError('selection-empty', 'Select at least two pads before running Smart Copper Pour.');
+						throw new SelectionResolutionError('selection-empty', '最少选择两个焊盘才可进行铺铜');
 					},
 					preview: async () => ({ previewToken: null }),
 					apply: async () => ({ applied: false }),
@@ -81,7 +81,7 @@ describe('handleSmartCopperPourMessage', () => {
 			command: 'inspectSelection',
 			error: {
 				code: 'selection-empty',
-				message: 'Select at least two pads before running Smart Copper Pour.',
+				message: '最少选择两个焊盘才可进行铺铜',
 			},
 			meta: { sequence: 9 },
 		});

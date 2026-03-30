@@ -68,7 +68,7 @@ const expectSelectionError = (selection: readonly LcedaSelectablePrimitive[], co
 describe('resolveSelectedPadNodes', () => {
 	test('rejects empty selection', () => {
 		expect(() => resolveSelectedPadNodes([])).toThrowError(SelectionResolutionError);
-		expect(() => resolveSelectedPadNodes([])).toThrow('Select at least two pads before running Smart Copper Pour.');
+		expect(() => resolveSelectedPadNodes([])).toThrow('最少选择两个焊盘才可进行铺铜');
 	});
 
 	test('rejects a one-pad selection', () => {
