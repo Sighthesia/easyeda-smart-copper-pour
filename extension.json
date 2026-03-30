@@ -27,13 +27,13 @@
 		"pcb": [
 			{
 				"id": "Smart Copper Pour",
-				"title": "Smart Copper Pour",
+				"title": "智能铺铜",
 				"menuItems": [
-			{
-				"id": "Smart Copper Pour",
-				"title": "Smart Copper Pour",
-				"registerFn": "openSmartCopperPour"
-			}
+					{
+						"id": "Smart Copper Pour",
+						"title": "打开智能铺铜面板",
+						"registerFn": "openSmartCopperPour"
+					}
 				]
 			}
 		]
