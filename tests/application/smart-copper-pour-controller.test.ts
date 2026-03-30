@@ -423,7 +423,7 @@ describe('SmartCopperPourController', () => {
 		expect(resolveObstacles).toHaveBeenCalledOnce();
 		expect(preview).toHaveBeenCalledWith({
 			...createPreviewRequest(),
-			width: 3,
+			width: 1,
 			autoExpand: true,
 			maxWidth: 6,
 			widthStep: 1,
@@ -435,7 +435,7 @@ describe('SmartCopperPourController', () => {
 		});
 	});
 
-	test('keeps manual daisy-chain endpoints in the autoExpand optimization path', async () => {
+	test('uses automatic daisy-chain routing in the autoExpand optimization path', async () => {
 		vi.resetModules();
 		const planDaisyChainBackbone = vi.fn(() => ({
 			mode: TopologyMode.DaisyChain,
@@ -478,9 +478,7 @@ describe('SmartCopperPourController', () => {
 			const optimizedPreviewRequest: SmartCopperPourPreviewOptimizationTestRequest = {
 				...createPreviewRequest(),
 				topologyMode: TopologyMode.DaisyChain,
-				trunkMode: 'manual',
-				trunkStart: { x: 3, y: 1 },
-				trunkEnd: { x: 9, y: 1 },
+				orthogonalRouting: true,
 				autoExpand: true,
 				maxWidth: 3,
 				widthStep: 1,
@@ -492,11 +490,7 @@ describe('SmartCopperPourController', () => {
 
 			await controller.preview(optimizedPreviewRequest);
 
-			expect(planDaisyChainBackbone).toHaveBeenCalledWith(expect.any(Array), {
-				trunkMode: 'manual',
-				trunkStart: { x: 3, y: 1 },
-				trunkEnd: { x: 9, y: 1 },
-			});
+			expect(planDaisyChainBackbone).toHaveBeenCalledWith(expect.any(Array), { trunkBias: undefined });
 			expect(preview).toHaveBeenCalledOnce();
 		} finally {
 			vi.doUnmock('../../src/domain/daisy-chain-planner');
@@ -504,7 +498,7 @@ describe('SmartCopperPourController', () => {
 		}
 	});
 
-	test('accepts daisy-chain preview requests with trunk points', async () => {
+	test('accepts daisy-chain preview requests without manual trunk points', async () => {
 		const controller = new SmartCopperPourController({
 			selectionInspector: { inspectSelection: async () => createSelectionSummary() },
 			previewGateway: { preview: async () => ({ previewToken: 'preview-1' }), clearPreview: async () => ({ cleared: true }) },
@@ -515,14 +509,12 @@ describe('SmartCopperPourController', () => {
 			controller.preview({
 				...createPreviewRequest(),
 				topologyMode: TopologyMode.DaisyChain,
-				trunkMode: 'manual',
-				trunkStart: { x: 0, y: 0 },
-				trunkEnd: { x: 10, y: 0 },
+				orthogonalRouting: true,
 			}),
 		).resolves.toEqual({ previewToken: 'preview-1' });
 	});
 
-	test('accepts daisy-chain preview requests in auto trunk mode without trunk points', async () => {
+	test('accepts daisy-chain preview requests with legacy non-orthogonal fallback disabled', async () => {
 		const controller = new SmartCopperPourController({
 			selectionInspector: { inspectSelection: async () => createSelectionSummary() },
 			previewGateway: { preview: async () => ({ previewToken: 'preview-1' }), clearPreview: async () => ({ cleared: true }) },
@@ -533,160 +525,12 @@ describe('SmartCopperPourController', () => {
 			controller.preview({
 				...createPreviewRequest(),
 				topologyMode: TopologyMode.DaisyChain,
-				trunkMode: 'auto',
+				orthogonalRouting: false,
 			}),
 		).resolves.toEqual({ previewToken: 'preview-1' });
 	});
 
-	test('rejects daisy-chain preview requests without trunkMode', async () => {
-		const controller = new SmartCopperPourController({
-			selectionInspector: { inspectSelection: async () => createSelectionSummary() },
-			previewGateway: { preview: async () => ({ previewToken: 'preview-1' }), clearPreview: async () => ({ cleared: true }) },
-			applyGateway: { apply: async () => ({ applied: true }) },
-		});
-
-		await expect(
-			controller.preview({
-				...createPreviewRequest(),
-				topologyMode: TopologyMode.DaisyChain,
-			} as unknown as Parameters<SmartCopperPourController['preview']>[0]),
-		).rejects.toMatchObject({
-			code: 'invalid-trunk-mode',
-			message: 'Daisy Chain mode requires trunkMode to be either manual or auto.',
-		});
-	});
-
-	test('rejects daisy-chain apply requests with an invalid trunkMode', async () => {
-		const controller = new SmartCopperPourController({
-			selectionInspector: { inspectSelection: async () => createSelectionSummary() },
-			previewGateway: { preview: async () => ({ previewToken: 'preview-1' }), clearPreview: async () => ({ cleared: true }) },
-			applyGateway: { apply: async () => ({ applied: true }) },
-		});
-
-		await expect(
-			controller.apply({
-				...createPreviewRequest(),
-				topologyMode: TopologyMode.DaisyChain,
-				trunkMode: 'bogus',
-			} as unknown as Parameters<SmartCopperPourController['apply']>[0]),
-		).rejects.toMatchObject({
-			code: 'invalid-trunk-mode',
-			message: 'Daisy Chain mode requires trunkMode to be either manual or auto.',
-		});
-	});
-
-	test('rejects daisy-chain preview requests without a valid trunk start point', async () => {
-		const controller = new SmartCopperPourController({
-			selectionInspector: {
-				inspectSelection: async () => createSelectionSummary(),
-			},
-			previewGateway: {
-				preview: async () => ({ previewToken: 'preview-1' }),
-				clearPreview: async () => ({ cleared: true }),
-			},
-			applyGateway: {
-				apply: async () => ({ applied: true }),
-			},
-		});
-
-		await expect(
-			controller.preview({
-				...createPreviewRequest(),
-				topologyMode: TopologyMode.DaisyChain,
-				trunkMode: 'manual',
-				trunkStart: { x: Number.NaN, y: 0 },
-				trunkEnd: { x: 10, y: 0 },
-			}),
-		).rejects.toMatchObject({
-			code: 'invalid-trunk-start',
-			message: 'Daisy Chain mode requires a valid trunk start point.',
-		});
-	});
-
-	test('rejects daisy-chain manual apply requests without a valid trunk start point', async () => {
-		const controller = new SmartCopperPourController({
-			selectionInspector: {
-				inspectSelection: async () => createSelectionSummary(),
-			},
-			previewGateway: {
-				preview: async () => ({ previewToken: 'preview-1' }),
-				clearPreview: async () => ({ cleared: true }),
-			},
-			applyGateway: {
-				apply: async () => ({ applied: true }),
-			},
-		});
-
-		await expect(
-			controller.apply({
-				...createPreviewRequest(),
-				topologyMode: TopologyMode.DaisyChain,
-				trunkMode: 'manual',
-				trunkStart: { x: Number.NaN, y: 0 },
-				trunkEnd: { x: 10, y: 0 },
-			}),
-		).rejects.toMatchObject({
-			code: 'invalid-trunk-start',
-			message: 'Daisy Chain mode requires a valid trunk start point.',
-		});
-	});
-
-	test('rejects daisy-chain preview requests without a trunk end point', async () => {
-		const controller = new SmartCopperPourController({
-			selectionInspector: {
-				inspectSelection: async () => createSelectionSummary(),
-			},
-			previewGateway: {
-				preview: async () => ({ previewToken: 'preview-1' }),
-				clearPreview: async () => ({ cleared: true }),
-			},
-			applyGateway: {
-				apply: async () => ({ applied: true }),
-			},
-		});
-
-		await expect(
-			controller.preview({
-				...createPreviewRequest(),
-				topologyMode: TopologyMode.DaisyChain,
-				trunkMode: 'manual',
-				trunkStart: { x: 0, y: 0 },
-			} as unknown as Parameters<SmartCopperPourController['preview']>[0]),
-		).rejects.toMatchObject({
-			code: 'missing-trunk-end',
-			message: 'Daisy Chain mode requires a trunk end point.',
-		});
-	});
-
-	test('rejects daisy-chain preview requests without a valid trunk end point', async () => {
-		const controller = new SmartCopperPourController({
-			selectionInspector: {
-				inspectSelection: async () => createSelectionSummary(),
-			},
-			previewGateway: {
-				preview: async () => ({ previewToken: 'preview-1' }),
-				clearPreview: async () => ({ cleared: true }),
-			},
-			applyGateway: {
-				apply: async () => ({ applied: true }),
-			},
-		});
-
-		await expect(
-			controller.preview({
-				...createPreviewRequest(),
-				topologyMode: TopologyMode.DaisyChain,
-				trunkMode: 'manual',
-				trunkStart: { x: 0, y: 0 },
-				trunkEnd: { x: Number.NaN, y: 0 },
-			}),
-		).rejects.toMatchObject({
-			code: 'invalid-trunk-end',
-			message: 'Daisy Chain mode requires a valid trunk end point.',
-		});
-	});
-
-	test('accepts daisy-chain apply requests in auto trunk mode without trunk points', async () => {
+	test('accepts daisy-chain apply requests without manual trunk points', async () => {
 		const apply = vi.fn(async () => ({ applied: true }));
 		const controller = new SmartCopperPourController({
 			selectionInspector: { inspectSelection: async () => createSelectionSummary() },
@@ -698,13 +542,13 @@ describe('SmartCopperPourController', () => {
 			controller.apply({
 				...createPreviewRequest(),
 				topologyMode: TopologyMode.DaisyChain,
-				trunkMode: 'auto',
+				orthogonalRouting: true,
 			}),
 		).resolves.toEqual({ applied: true });
 		expect(apply).toHaveBeenCalledWith({
 			...createPreviewRequest(),
 			topologyMode: TopologyMode.DaisyChain,
-			trunkMode: 'auto',
+			orthogonalRouting: true,
 			previewToken: null,
 		});
 	});

@@ -14,42 +14,45 @@ describe('smart copper topology contract', () => {
 						width: 1,
 						keepoutMargin: 0.2,
 						cornerStyle: 'round',
+						useNodeSizeAsBaseWidth: true,
+						orthogonalRouting: true,
+						...(topologyMode === TopologyMode.Star ? { starAreaShape: 'convexHull' } : {}),
 					},
 				}),
 			).toBe(true);
 		}
 	});
 
-	test('accepts daisyChain topology mode with auto trunk routing', () => {
+	test('accepts daisyChain topology mode without manual trunk routing fields', () => {
 		expect(
 			isSmartCopperPourRequestMessage({
 				command: 'preview',
 				payload: {
 					topologyMode: TopologyMode.DaisyChain,
-					trunkMode: 'auto',
 					width: 1,
 					keepoutMargin: 0.2,
-					cornerStyle: 'round',
+					cornerStyle: 'bevel45',
+					useNodeSizeAsBaseWidth: true,
+					orthogonalRouting: true,
 				},
 			}),
 		).toBe(true);
 	});
 
-	test('accepts daisyChain topology mode with manual trunk routing', () => {
+	test('rejects daisyChain payloads that still carry removed manual trunk fields', () => {
 		expect(
 			isSmartCopperPourRequestMessage({
 				command: 'preview',
 				payload: {
 					topologyMode: TopologyMode.DaisyChain,
-					trunkMode: 'manual',
 					width: 1,
 					keepoutMargin: 0.2,
-					cornerStyle: 'round',
+					trunkMode: 'manual',
 					trunkStart: { x: 0, y: 0 },
 					trunkEnd: { x: 10, y: 0 },
 				},
 			}),
-		).toBe(true);
+		).toBe(false);
 	});
 
 	test('accepts preview requests that omit cornerStyle and use the default', () => {

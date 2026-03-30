@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import type { SkeletonPolygon, SkeletonSegment } from '../../../src/domain/skeleton-types';
-import { buildSkeletonOffsetPolygons } from '../../../src/infrastructure/geometry/polygon-offset-builder';
+import { buildClosedPolygonOffsetPolygons, buildSkeletonOffsetPolygons } from '../../../src/infrastructure/geometry/polygon-offset-builder';
 
 const createSegment = (startX: number, startY: number, endX: number, endY: number): SkeletonSegment => ({
 	start: { x: startX, y: startY },
@@ -37,7 +37,7 @@ describe('buildSkeletonOffsetPolygons', () => {
 		});
 	});
 
-	test('falls back to bevel corners by default', () => {
+	test('falls back to bevel45 corners by default', () => {
 		const polygons = buildSkeletonOffsetPolygons({
 			segments: [createSegment(0, 0, 4, 0), createSegment(4, 0, 4, 3)],
 			width: 2,
@@ -45,7 +45,7 @@ describe('buildSkeletonOffsetPolygons', () => {
 		const bevelPolygons = buildSkeletonOffsetPolygons({
 			segments: [createSegment(0, 0, 4, 0), createSegment(4, 0, 4, 3)],
 			width: 2,
-			cornerStyle: 'bevel',
+			cornerStyle: 'bevel45',
 		});
 		const roundPolygons = buildSkeletonOffsetPolygons({
 			segments: [createSegment(0, 0, 4, 0), createSegment(4, 0, 4, 3)],
@@ -66,11 +66,11 @@ describe('buildSkeletonOffsetPolygons', () => {
 		expect(polygons[0].vertices.length).toBeLessThan(roundPolygons[0].vertices.length);
 	});
 
-	test('supports explicit bevel corners without splitting the island', () => {
+	test('supports explicit bevel45 corners without splitting the island', () => {
 		const polygons = buildSkeletonOffsetPolygons({
 			segments: [createSegment(0, 0, 4, 0), createSegment(4, 0, 4, 3)],
 			width: 2,
-			cornerStyle: 'bevel',
+			cornerStyle: 'bevel45',
 		});
 
 		expect(polygons).toHaveLength(1);
@@ -94,6 +94,29 @@ describe('buildSkeletonOffsetPolygons', () => {
 			maxX: 7,
 			minY: -1,
 			maxY: 1,
+		});
+	});
+
+	test('offsets a closed polygon for block star pours', () => {
+		const polygons = buildClosedPolygonOffsetPolygons({
+			polygon: {
+				vertices: [
+					{ x: 0, y: 0 },
+					{ x: 4, y: 0 },
+					{ x: 4, y: 2 },
+					{ x: 0, y: 2 },
+				],
+			},
+			width: 2,
+			cornerStyle: 'rightAngle',
+		});
+
+		expect(polygons).toHaveLength(1);
+		expect(getBounds(polygons[0])).toEqual({
+			minX: -1,
+			maxX: 5,
+			minY: -1,
+			maxY: 3,
 		});
 	});
 });

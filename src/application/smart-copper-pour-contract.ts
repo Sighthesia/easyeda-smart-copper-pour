@@ -27,17 +27,12 @@ const SMART_COPPER_POUR_TOPOLOGY_MODES = new Set<string>(Object.values(TopologyM
  *
  * @public
  */
-export type SmartCopperPourCornerStyle = 'round' | 'miter' | 'bevel';
+export type SmartCopperPourCornerStyle = 'bevel45' | 'rightAngle' | 'round';
+export type SmartCopperPourStarAreaShape = 'boundingBox' | 'convexHull';
 export type SmartCopperPourTrunkBias = 'neutral' | 'horizontal' | 'vertical';
-export type SmartCopperPourDaisyChainTrunkMode = 'auto' | 'manual';
 
 export interface SmartCopperPourMessageMeta {
 	sequence?: number;
-}
-
-export interface SmartCopperPourTrunkPoint {
-	x: number;
-	y: number;
 }
 
 export interface SmartCopperPourViaLayerSpan {
@@ -118,6 +113,9 @@ export interface SmartCopperPourRequestBase {
 	width: number;
 	keepoutMargin: number;
 	cornerStyle?: SmartCopperPourCornerStyle;
+	starAreaShape?: SmartCopperPourStarAreaShape;
+	useNodeSizeAsBaseWidth?: boolean;
+	orthogonalRouting?: boolean;
 	trunkBias?: SmartCopperPourTrunkBias;
 	autoExpand?: boolean;
 	maxWidth?: number;
@@ -128,26 +126,11 @@ export interface SmartCopperPourRequestBase {
 
 export interface SmartCopperPourTreeLikeRequest extends SmartCopperPourRequestBase {
 	topologyMode: TopologyMode.Tree | TopologyMode.Star;
-	trunkMode?: never;
-	trunkStart?: never;
-	trunkEnd?: never;
 }
 
-export interface SmartCopperPourDaisyChainAutoRequest extends SmartCopperPourRequestBase {
+export interface SmartCopperPourDaisyChainRequest extends SmartCopperPourRequestBase {
 	topologyMode: TopologyMode.DaisyChain;
-	trunkMode: 'auto';
-	trunkStart?: never;
-	trunkEnd?: never;
 }
-
-export interface SmartCopperPourDaisyChainManualRequest extends SmartCopperPourRequestBase {
-	topologyMode: TopologyMode.DaisyChain;
-	trunkMode: 'manual';
-	trunkStart: SmartCopperPourTrunkPoint;
-	trunkEnd: SmartCopperPourTrunkPoint;
-}
-
-export type SmartCopperPourDaisyChainRequest = SmartCopperPourDaisyChainAutoRequest | SmartCopperPourDaisyChainManualRequest;
 
 export type SmartCopperPourPreviewRequest = SmartCopperPourTreeLikeRequest | SmartCopperPourDaisyChainRequest;
 
@@ -425,11 +408,14 @@ const isSmartCopperPourRequestBase = (value: unknown): value is SmartCopperPourR
 		SMART_COPPER_POUR_TOPOLOGY_MODES.has(request.topologyMode) &&
 		isFiniteNumber(request.width) &&
 		isFiniteNumber(request.keepoutMargin) &&
-		(request.autoExpand === undefined || typeof request.autoExpand === 'boolean') &&
-		(request.maxWidth === undefined || isFiniteNumber(request.maxWidth)) &&
-		(request.widthStep === undefined || isFiniteNumber(request.widthStep)) &&
-		(request.obstacleMargin === undefined || isFiniteNumber(request.obstacleMargin)) &&
-		(request.selectionPrimitives === undefined || isSmartCopperPourSelectedPrimitiveArray(request.selectionPrimitives)) &&
+		isOptionalBoolean(request.autoExpand) &&
+		isOptionalFiniteNumber(request.maxWidth) &&
+		isOptionalFiniteNumber(request.widthStep) &&
+		isOptionalFiniteNumber(request.obstacleMargin) &&
+		isOptionalSelectedPrimitiveArray(request.selectionPrimitives) &&
+		isSmartCopperPourStarAreaShape(request.starAreaShape) &&
+		isOptionalBoolean(request.useNodeSizeAsBaseWidth) &&
+		isOptionalBoolean(request.orthogonalRouting) &&
 		isSmartCopperPourTrunkBias(request.trunkBias) &&
 		isSmartCopperPourCornerStyle(request.cornerStyle)
 	);
@@ -539,8 +525,12 @@ const isSmartCopperPourTrunkBias = (value: unknown): value is SmartCopperPourTru
 	return value === undefined || value === 'neutral' || value === 'horizontal' || value === 'vertical';
 };
 
+const isSmartCopperPourStarAreaShape = (value: unknown): value is SmartCopperPourStarAreaShape | undefined => {
+	return value === undefined || value === 'boundingBox' || value === 'convexHull';
+};
+
 const isSmartCopperPourCornerStyle = (value: unknown): value is SmartCopperPourCornerStyle | undefined => {
-	return value === undefined || value === 'round' || value === 'miter' || value === 'bevel';
+	return value === undefined || value === 'round' || value === 'rightAngle' || value === 'bevel45';
 };
 
 const isSmartCopperPourApplyRequest = (value: unknown): value is SmartCopperPourApplyRequest => {
@@ -557,25 +547,26 @@ const isSmartCopperPourPreviewRequest = (value: unknown): value is SmartCopperPo
 		return false;
 	}
 
-	const request = value as { topologyMode?: unknown; trunkMode?: unknown; trunkStart?: unknown; trunkEnd?: unknown };
-	if (request.topologyMode === TopologyMode.DaisyChain) {
-		if (request.trunkMode === 'auto') {
-			return request.trunkStart === undefined && request.trunkEnd === undefined;
-		}
-
-		if (request.trunkMode === 'manual') {
-			return isTrunkPoint(request.trunkStart) && isTrunkPoint(request.trunkEnd);
-		}
-
+	const request = value as {
+		topologyMode?: unknown;
+		trunkMode?: unknown;
+		trunkStart?: unknown;
+		trunkEnd?: unknown;
+		starAreaShape?: unknown;
+	};
+	if (request.trunkMode !== undefined || request.trunkStart !== undefined || request.trunkEnd !== undefined) {
 		return false;
 	}
 
-	return (
-		(request.topologyMode === TopologyMode.Tree || request.topologyMode === TopologyMode.Star) &&
-		request.trunkMode === undefined &&
-		request.trunkStart === undefined &&
-		request.trunkEnd === undefined
-	);
+	if (request.topologyMode === TopologyMode.Tree) {
+		return request.starAreaShape === undefined;
+	}
+
+	if (request.topologyMode === TopologyMode.Star) {
+		return isSmartCopperPourStarAreaShape(request.starAreaShape);
+	}
+
+	return request.topologyMode === TopologyMode.DaisyChain && request.starAreaShape === undefined;
 };
 
 const isOptionalSmartCopperPourMessageMeta = (value: unknown): value is SmartCopperPourMessageMeta | undefined => {
@@ -600,16 +591,15 @@ const isSmartCopperPourErrorPayload = (value: unknown): value is SmartCopperPour
 	return typeof error.code === 'string' && typeof error.message === 'string' && (error.details === undefined || typeof error.details === 'string');
 };
 
-const isTrunkPoint = (value: unknown): value is SmartCopperPourTrunkPoint => {
-	if (typeof value !== 'object' || value === null) {
-		return false;
-	}
-
-	const point = value as { x?: unknown; y?: unknown };
-	return isFiniteNumber(point.x) && isFiniteNumber(point.y);
-};
-
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+const isOptionalFiniteNumber = (value: unknown): value is number | undefined => value === undefined || isFiniteNumber(value);
+
+const isOptionalBoolean = (value: unknown): value is boolean | undefined => value === undefined || typeof value === 'boolean';
+
+const isOptionalSelectedPrimitiveArray = (value: unknown): value is readonly SmartCopperPourSelectedPrimitive[] | undefined => {
+	return value === undefined || isSmartCopperPourSelectedPrimitiveArray(value);
+};
 
 const isNullableFiniteNumber = (value: unknown): value is number | null => value === null || isFiniteNumber(value);
 

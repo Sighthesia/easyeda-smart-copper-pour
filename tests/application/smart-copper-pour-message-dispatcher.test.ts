@@ -6,29 +6,29 @@ import { TopologyMode } from '../../src/domain/topology-mode';
 import { SelectionResolutionError } from '../../src/infrastructure/lceda/selection-resolver';
 
 describe('handleSmartCopperPourMessage', () => {
-	test('accepts daisyChain requests with trunkMode auto payloads', () => {
+	test('accepts daisyChain requests with automatic routing payloads', () => {
 		expect(
 			isSmartCopperPourRequestMessage({
 				command: 'preview',
 				payload: {
 					topologyMode: TopologyMode.DaisyChain,
-					trunkMode: 'auto',
 					width: 1,
 					keepoutMargin: 0.2,
+					orthogonalRouting: true,
 				},
 			}),
 		).toBe(true);
 	});
 
-	test('rejects tree requests carrying trunkMode', () => {
+	test('rejects tree requests carrying removed manual trunk fields', () => {
 		expect(
 			isSmartCopperPourRequestMessage({
 				command: 'preview',
 				payload: {
 					topologyMode: TopologyMode.Tree,
-					trunkMode: 'auto',
 					width: 1,
 					keepoutMargin: 0.2,
+					trunkStart: { x: 0, y: 0 },
 				},
 			}),
 		).toBe(false);
@@ -37,18 +37,18 @@ describe('handleSmartCopperPourMessage', () => {
 	test('returns inspectSelection summary payload', async () => {
 		await expect(
 			handleSmartCopperPourMessage(
-			{
-				inspectSelection: async () => ({
-					connectionCount: 1,
-					netName: 'VCC',
-					layerName: 'TopLayer',
-					selectionFingerprint: 'fingerprint-1',
-				}),
-				preview: async () => ({ previewToken: null }),
-				apply: async () => ({ applied: false }),
-				clearPreview: async () => ({ cleared: true }),
-			},
-			{ command: 'inspectSelection', meta: { sequence: 7 } },
+				{
+					inspectSelection: async () => ({
+						connectionCount: 1,
+						netName: 'VCC',
+						layerName: 'TopLayer',
+						selectionFingerprint: 'fingerprint-1',
+					}),
+					preview: async () => ({ previewToken: null }),
+					apply: async () => ({ applied: false }),
+					clearPreview: async () => ({ cleared: true }),
+				},
+				{ command: 'inspectSelection', meta: { sequence: 7 } },
 			),
 		).resolves.toEqual({
 			ok: true,
@@ -66,15 +66,15 @@ describe('handleSmartCopperPourMessage', () => {
 	test('preserves actionable selection error codes for inspectSelection failures', async () => {
 		await expect(
 			handleSmartCopperPourMessage(
-			{
-				inspectSelection: async () => {
-					throw new SelectionResolutionError('selection-empty', 'Select at least two pads before running Smart Copper Pour.');
+				{
+					inspectSelection: async () => {
+						throw new SelectionResolutionError('selection-empty', 'Select at least two pads before running Smart Copper Pour.');
+					},
+					preview: async () => ({ previewToken: null }),
+					apply: async () => ({ applied: false }),
+					clearPreview: async () => ({ cleared: true }),
 				},
-				preview: async () => ({ previewToken: null }),
-				apply: async () => ({ applied: false }),
-				clearPreview: async () => ({ cleared: true }),
-			},
-			{ command: 'inspectSelection', meta: { sequence: 9 } },
+				{ command: 'inspectSelection', meta: { sequence: 9 } },
 			),
 		).resolves.toEqual({
 			ok: false,

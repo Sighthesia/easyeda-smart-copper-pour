@@ -6,39 +6,37 @@ import { bootstrapIframeApp, createIframeApp, resolveSuccessStatus } from '../..
 import type { SmartCopperPourRuntimeWindow } from '../../src/iframe/runtime-eda';
 
 class FakeElement extends EventTarget {
+	public checked = false;
 	public hidden = false;
 	public textContent = '';
 	public dataset: Record<string, string> = {};
 	public value = '';
 	public topologyMode?: FakeElement;
+	public starAreaShape?: FakeElement;
 	public cornerStyle?: FakeElement;
-	public trunkBias?: FakeElement;
 	public width?: FakeElement;
 	public keepoutMargin?: FakeElement;
-	public trunkStartX?: FakeElement;
-	public trunkStartY?: FakeElement;
-	public trunkEndX?: FakeElement;
-	public trunkEndY?: FakeElement;
+	public useNodeSizeAsBaseWidth?: FakeElement;
+	public orthogonalRouting?: FakeElement;
 }
 
-const createField = (value: string): FakeElement => {
+const createField = (value: string, checked = false): FakeElement => {
 	const field = new FakeElement();
 	field.value = value;
+	field.checked = checked;
 	return field;
 };
 
 const createForm = (): FakeElement => {
 	const form = new FakeElement();
 	Object.assign(form, {
-		topologyMode: createField('tree'),
-		cornerStyle: createField('bevel'),
-		trunkBias: createField('neutral'),
+		topologyMode: createField('daisyChain'),
+		starAreaShape: createField('convexHull'),
+		cornerStyle: createField('bevel45'),
 		width: createField('1'),
 		keepoutMargin: createField('0'),
-		trunkStartX: createField('0'),
-		trunkStartY: createField('0'),
-		trunkEndX: createField('10'),
-		trunkEndY: createField('0'),
+		useNodeSizeAsBaseWidth: createField('', true),
+		orthogonalRouting: createField('', true),
 	});
 	return form;
 };
@@ -64,7 +62,8 @@ const createBootstrapHarness = () => {
 	const selectionNet = new FakeElement();
 	const selectionLayer = new FakeElement();
 	const selectionPadCount = new FakeElement();
-	const daisyOnlyField = new FakeElement();
+	const starOnlyField = new FakeElement();
+	const treeLikeOnlyField = new FakeElement();
 	const panelApi = createPanelApi();
 	const storage = {
 		getItem: vi.fn<(key: string) => string | null>(() => null),
@@ -83,7 +82,17 @@ const createBootstrapHarness = () => {
 
 	const documentObject = {
 		getElementById: (id: string) => elements.get(id) ?? null,
-		querySelectorAll: (selector: string) => (selector === '[data-daisy-only]' ? [daisyOnlyField] : []),
+		querySelectorAll: (selector: string) => {
+			if (selector === '[data-star-only]') {
+				return [starOnlyField];
+			}
+
+			if (selector === '[data-tree-like-only]') {
+				return [treeLikeOnlyField];
+			}
+
+			return [];
+		},
 	};
 
 	const windowObject = new EventTarget();
@@ -91,7 +100,6 @@ const createBootstrapHarness = () => {
 	return {
 		applyButton,
 		clearButton,
-		daisyOnlyField,
 		documentObject,
 		form,
 		panelApi,
@@ -99,8 +107,10 @@ const createBootstrapHarness = () => {
 		selectionLayer,
 		selectionNet,
 		selectionPadCount,
+		starOnlyField,
 		statusPanel,
 		storage,
+		treeLikeOnlyField,
 		windowObject,
 	};
 };
@@ -115,7 +125,7 @@ afterEach(() => {
 });
 
 describe('createIframeApp', () => {
-	test('reads default tree request before calling direct panel API', async () => {
+	test('reads default daisy-chain request before calling direct panel API', async () => {
 		const panelApi = createPanelApi();
 		const app = createIframeApp({
 			form: createForm() as unknown as never,
@@ -126,18 +136,20 @@ describe('createIframeApp', () => {
 
 		expect(panelApi.inspectSelection).toHaveBeenCalledTimes(1);
 		expect(panelApi.preview).toHaveBeenCalledWith({
-			cornerStyle: 'bevel',
+			cornerStyle: 'bevel45',
 			keepoutMargin: 0,
-			topologyMode: 'tree',
-			trunkBias: 'neutral',
+			orthogonalRouting: true,
+			topologyMode: 'daisyChain',
+			useNodeSizeAsBaseWidth: true,
 			width: 1,
 		});
 	});
 
-	test('reads daisy-chain requests with manual trunk coordinates', async () => {
+	test('reads star requests with block area controls', async () => {
 		const panelApi = createPanelApi();
 		const form = createForm();
-		form.topologyMode!.value = 'daisyChain';
+		form.topologyMode!.value = 'star';
+		form.starAreaShape!.value = 'boundingBox';
 
 		const app = createIframeApp({
 			form: form as unknown as never,
@@ -147,19 +159,12 @@ describe('createIframeApp', () => {
 		await app.apply();
 
 		expect(panelApi.apply).toHaveBeenCalledWith({
-			cornerStyle: 'bevel',
+			cornerStyle: 'bevel45',
 			keepoutMargin: 0,
-			topologyMode: 'daisyChain',
-			trunkBias: 'neutral',
-			trunkEnd: {
-				x: 10,
-				y: 0,
-			},
-			trunkMode: 'manual',
-			trunkStart: {
-				x: 0,
-				y: 0,
-			},
+			orthogonalRouting: true,
+			starAreaShape: 'boundingBox',
+			topologyMode: 'star',
+			useNodeSizeAsBaseWidth: true,
 			width: 1,
 		});
 	});
@@ -170,15 +175,13 @@ describe('bootstrapIframeApp', () => {
 		const harness = createBootstrapHarness();
 		harness.storage.getItem.mockReturnValue(
 			JSON.stringify({
-				topologyMode: 'daisyChain',
-				cornerStyle: 'miter',
-				trunkBias: 'vertical',
+				topologyMode: 'star',
+				starAreaShape: 'boundingBox',
+				cornerStyle: 'rightAngle',
 				width: '2.5',
 				keepoutMargin: '0.4',
-				trunkStartX: '1',
-				trunkStartY: '2',
-				trunkEndX: '9',
-				trunkEndY: '3',
+				useNodeSizeAsBaseWidth: false,
+				orthogonalRouting: false,
 			}),
 		);
 
@@ -193,11 +196,13 @@ describe('bootstrapIframeApp', () => {
 			expect(harness.selectionNet.textContent).toBe('VCC');
 		});
 
-		expect(harness.form.topologyMode!.value).toBe('daisyChain');
-		expect(harness.form.cornerStyle!.value).toBe('miter');
-		expect(harness.form.trunkBias!.value).toBe('vertical');
+		expect(harness.form.topologyMode!.value).toBe('star');
+		expect(harness.form.starAreaShape!.value).toBe('boundingBox');
+		expect(harness.form.cornerStyle!.value).toBe('rightAngle');
 		expect(harness.form.width!.value).toBe('2.5');
-		expect(harness.daisyOnlyField.hidden).toBe(false);
+		expect(harness.form.useNodeSizeAsBaseWidth!.checked).toBe(false);
+		expect(harness.starOnlyField.hidden).toBe(false);
+		expect(harness.treeLikeOnlyField.hidden).toBe(true);
 		expect(harness.selectionLayer.textContent).toBe('TopLayer');
 		expect(harness.selectionPadCount.textContent).toBe('2');
 		expect(harness.statusPanel.textContent).toBe('已准备好选择。请调整参数后预览。');
@@ -230,53 +235,15 @@ describe('bootstrapIframeApp', () => {
 
 		expect(harness.panelApi.inspectSelection).toHaveBeenCalledTimes(1);
 		expect(harness.panelApi.preview).toHaveBeenCalledWith({
-			cornerStyle: 'bevel',
+			cornerStyle: 'bevel45',
 			keepoutMargin: 0,
-			topologyMode: 'tree',
-			trunkBias: 'neutral',
+			orthogonalRouting: true,
+			topologyMode: 'daisyChain',
+			useNodeSizeAsBaseWidth: true,
 			width: 2,
 		});
 		expect(harness.storage.setItem).toHaveBeenCalledTimes(1);
 		expect(harness.statusPanel.textContent).toBe('预览已更新。');
-		harness.windowObject.dispatchEvent(new Event('beforeunload'));
-	});
-
-	test('refreshes selection again when iframe regains focus', async () => {
-		const harness = createBootstrapHarness();
-		harness.panelApi.inspectSelection
-			.mockResolvedValueOnce({
-				connectionCount: 2,
-				layerName: 'TopLayer',
-				netName: 'OLD',
-				selectionFingerprint: 'selection-1',
-			})
-			.mockResolvedValueOnce({
-				connectionCount: 5,
-				layerName: 'BottomLayer',
-				netName: 'NEW',
-				selectionFingerprint: 'selection-2',
-			});
-
-		bootstrapIframeApp({
-			documentObject: harness.documentObject as unknown as Document,
-			windowObject: harness.windowObject as unknown as SmartCopperPourRuntimeWindow,
-			storage: harness.storage,
-			panelApi: harness.panelApi,
-		});
-
-		await vi.waitFor(() => {
-			expect(harness.selectionNet.textContent).toBe('OLD');
-		});
-
-		harness.windowObject.dispatchEvent(new Event('focus'));
-
-		await vi.waitFor(() => {
-			expect(harness.selectionNet.textContent).toBe('NEW');
-		});
-
-		expect(harness.selectionLayer.textContent).toBe('BottomLayer');
-		expect(harness.selectionPadCount.textContent).toBe('5');
-		expect(harness.statusPanel.textContent).toBe('已同步当前选区。');
 		harness.windowObject.dispatchEvent(new Event('beforeunload'));
 	});
 });
@@ -289,10 +256,10 @@ describe('iframe shell', () => {
 		expect(iframeHtml).not.toContain('<strong>焊盘</strong>');
 	});
 
-	test('keeps iframe default corner style aligned to bevel', () => {
+	test('keeps iframe default corner style aligned to bevel45', () => {
 		const iframeHtml = readFileSync(resolve(__dirname, '../../iframe/index.html'), 'utf8');
 
-		expect(iframeHtml).toContain('<option value="bevel" selected>斜切</option>');
+		expect(iframeHtml).toContain('<option value="bevel45" selected>45°斜切</option>');
 		expect(iframeHtml).not.toContain('<option value="round" selected>圆角</option>');
 	});
 

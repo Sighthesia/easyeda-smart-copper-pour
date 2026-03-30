@@ -1,5 +1,7 @@
 import { optimizeSkeletonClearance } from '../domain/clearance-optimizer';
+import { resolveBaseCopperWidth } from '../domain/copper-width';
 import { planDaisyChainBackbone } from '../domain/daisy-chain-planner';
+import { planOrthogonalTreeBackbone } from '../domain/orthogonal-tree-planner';
 import type { PadNode } from '../domain/pad-node';
 import type { SkeletonObstacle, SkeletonSegment } from '../domain/skeleton-types';
 import { planStarBackbone } from '../domain/star-backbone-planner';
@@ -9,8 +11,6 @@ import type {
 	SmartCopperPourApplyRequest,
 	SmartCopperPourApplyResult,
 	SmartCopperPourClearPreviewResult,
-	SmartCopperPourDaisyChainAutoRequest,
-	SmartCopperPourDaisyChainManualRequest,
 	SmartCopperPourInspectSelectionRequest,
 	SmartCopperPourPreviewRequest,
 	SmartCopperPourPreviewResult,
@@ -88,12 +88,7 @@ type SmartCopperPourValidationErrorCode =
 	| 'invalid-keepout-margin'
 	| 'invalid-max-width'
 	| 'invalid-width-step'
-	| 'invalid-obstacle-margin'
-	| 'invalid-trunk-mode'
-	| 'missing-trunk-start'
-	| 'missing-trunk-end'
-	| 'invalid-trunk-start'
-	| 'invalid-trunk-end';
+	| 'invalid-obstacle-margin';
 
 class SmartCopperPourValidationError extends Error {
 	public constructor(
@@ -176,16 +171,17 @@ export class SmartCopperPourController {
 		const optimized = optimizeSkeletonClearance({
 			segments: skeleton.segments,
 			obstacles,
-			baseWidth: request.width,
-			maxWidth: request.maxWidth ?? request.width,
+			baseWidth: request.width + resolveBaseCopperWidth(optimizationRequest.padNodes ?? [], request),
+			maxWidth: (request.maxWidth ?? request.width) + resolveBaseCopperWidth(optimizationRequest.padNodes ?? [], request),
 			widthStep: request.widthStep ?? 1,
 			keepoutMargin: request.keepoutMargin,
 			obstacleMargin: request.obstacleMargin,
 		});
+		const baseWidth = resolveBaseCopperWidth(optimizationRequest.padNodes ?? [], request);
 
 		return {
 			...request,
-			width: optimized.width,
+			width: Math.max(optimized.width - baseWidth, 0.01),
 		};
 	}
 
@@ -221,44 +217,6 @@ const validateSmartCopperPourRequest = (request: SmartCopperPourPreviewRequest |
 
 	if (request.obstacleMargin !== undefined && request.obstacleMargin < 0) {
 		throw new SmartCopperPourValidationError('invalid-obstacle-margin', 'Obstacle margin must be 0 or greater.');
-	}
-
-	validateDaisyChainRequest(request);
-};
-
-const validateDaisyChainRequest = (request: SmartCopperPourPreviewRequest | SmartCopperPourApplyRequest): void => {
-	if (request.topologyMode === 'daisyChain' && request.trunkMode !== 'manual' && request.trunkMode !== 'auto') {
-		throw new SmartCopperPourValidationError('invalid-trunk-mode', 'Daisy Chain mode requires trunkMode to be either manual or auto.');
-	}
-
-	if (request.topologyMode === 'daisyChain' && request.trunkMode === 'manual' && request.trunkStart === undefined) {
-		throw new SmartCopperPourValidationError('missing-trunk-start', 'Daisy Chain mode requires a trunk start point.');
-	}
-
-	if (request.topologyMode === 'daisyChain' && request.trunkMode === 'manual' && request.trunkEnd === undefined) {
-		throw new SmartCopperPourValidationError('missing-trunk-end', 'Daisy Chain mode requires a trunk end point.');
-	}
-
-	validateManualTrunkCoordinates(request);
-};
-
-const validateManualTrunkCoordinates = (request: SmartCopperPourPreviewRequest | SmartCopperPourApplyRequest): void => {
-	if (
-		request.topologyMode === 'daisyChain' &&
-		request.trunkMode === 'manual' &&
-		request.trunkStart !== undefined &&
-		(!Number.isFinite(request.trunkStart.x) || !Number.isFinite(request.trunkStart.y))
-	) {
-		throw new SmartCopperPourValidationError('invalid-trunk-start', 'Daisy Chain mode requires a valid trunk start point.');
-	}
-
-	if (
-		request.topologyMode === 'daisyChain' &&
-		request.trunkMode === 'manual' &&
-		request.trunkEnd !== undefined &&
-		(!Number.isFinite(request.trunkEnd.x) || !Number.isFinite(request.trunkEnd.y))
-	) {
-		throw new SmartCopperPourValidationError('invalid-trunk-end', 'Daisy Chain mode requires a valid trunk end point.');
 	}
 };
 
@@ -299,7 +257,10 @@ const resolveOptimizationSkeleton = (
 	}
 
 	if (request.topologyMode === 'tree') {
-		const plan = planTreeBackbone(request.padNodes, { trunkBias: request.trunkBias });
+		const plan =
+			request.orthogonalRouting === false
+				? planTreeBackbone(request.padNodes, { trunkBias: request.trunkBias })
+				: { segments: planOrthogonalTreeBackbone(request.padNodes, { trunkBias: request.trunkBias }).segments };
 		return { segments: plan.segments };
 	}
 
@@ -307,25 +268,11 @@ const resolveOptimizationSkeleton = (
 		return { segments: planStarBackbone(request.padNodes, { trunkBias: request.trunkBias }).segments };
 	}
 
-	if (request.trunkMode === 'manual') {
-		const manualDaisyChainRequest = request as SmartCopperPourDaisyChainManualRequest;
-
-		return {
-			segments: planDaisyChainBackbone(request.padNodes, {
-				trunkMode: 'manual',
-				trunkStart: manualDaisyChainRequest.trunkStart,
-				trunkEnd: manualDaisyChainRequest.trunkEnd,
-			}).segments,
-		};
-	}
-
-	const autoDaisyChainRequest = request as SmartCopperPourDaisyChainAutoRequest;
-
 	return {
-		segments: planDaisyChainBackbone(request.padNodes, {
-			trunkMode: 'auto',
-			trunkBias: autoDaisyChainRequest.trunkBias,
-		}).segments,
+		segments:
+			request.orthogonalRouting === false
+				? planTreeBackbone(request.padNodes, { trunkBias: request.trunkBias }).segments
+				: planDaisyChainBackbone(request.padNodes, { trunkBias: request.trunkBias }).segments,
 	};
 };
 

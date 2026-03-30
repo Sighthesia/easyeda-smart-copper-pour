@@ -1,9 +1,12 @@
 import type { SmartCopperPourPreviewRequest } from '../../application/smart-copper-pour-contract';
+import { resolveFinalCopperWidth } from '../../domain/copper-width';
 import { planDaisyChainBackbone } from '../../domain/daisy-chain-planner';
+import { planOrthogonalTreeBackbone } from '../../domain/orthogonal-tree-planner';
 import type { SkeletonPolygon, SkeletonSegment } from '../../domain/skeleton-types';
+import { planStarArea } from '../../domain/star-area-planner';
 import { planStarBackbone } from '../../domain/star-backbone-planner';
 import { planTreeBackbone } from '../../domain/tree-backbone-planner';
-import { buildSkeletonOffsetPolygons } from '../geometry/polygon-offset-builder';
+import { buildClosedPolygonOffsetPolygons, buildSkeletonOffsetPolygons } from '../geometry/polygon-offset-builder';
 import { isSupportedLcedaCopperLayerId, toLcedaLayerId } from './layer-name';
 import { type LcedaSelectedPrimitivesReader, createLcedaSelectedPrimitivesReader, normalizeSelectedSnapshotPrimitives } from './selection-inspector';
 import { resolveSelectedPadNodes } from './selection-resolver';
@@ -38,12 +41,8 @@ export const createRuntimeCopperPlanBuilder = (
 				? normalizeSelectedSnapshotPrimitives(request.selectionPrimitives)
 				: await reader.readSelectedPrimitives();
 		const padNodes = resolveSelectedPadNodes(selectedPrimitives);
-		const segments = resolveSkeletonSegments(padNodes, request);
-		const polygons = buildSkeletonOffsetPolygons({
-			segments,
-			width: request.width,
-			cornerStyle: request.cornerStyle,
-		});
+		const width = resolveFinalCopperWidth(padNodes, request);
+		const polygons = resolveCopperPolygons(padNodes, request, width);
 		const layerName = padNodes[0].layer;
 		const layerId = toLcedaLayerId(layerName);
 		if (layerId === null || !isSupportedLcedaCopperLayerId(layerId)) {
@@ -65,36 +64,36 @@ const resolveSkeletonSegments = (
 ): ReadonlyArray<SkeletonSegment> => {
 	switch (request.topologyMode) {
 		case 'tree':
-			return planTreeBackbone(padNodes, { trunkBias: request.trunkBias }).segments;
+			return request.orthogonalRouting === false
+				? planTreeBackbone(padNodes, { trunkBias: request.trunkBias }).segments
+				: planOrthogonalTreeBackbone(padNodes, { trunkBias: request.trunkBias }).segments;
 		case 'star':
 			return planStarBackbone(padNodes, { trunkBias: request.trunkBias }).segments;
 		case 'daisyChain':
-			if (request.trunkMode !== 'manual' && request.trunkMode !== 'auto') {
-				throw new Error('Daisy Chain mode requires trunkMode to be either manual or auto.');
-			}
-
-			if (request.trunkMode === 'manual') {
-				validateManualTrunkPoint(request.trunkStart, 'start');
-				validateManualTrunkPoint(request.trunkEnd, 'end');
-			}
-
-			return request.trunkMode === 'manual'
-				? planDaisyChainBackbone(padNodes, {
-						trunkMode: 'manual',
-						trunkStart: request.trunkStart,
-						trunkEnd: request.trunkEnd,
-					}).segments
-				: planDaisyChainBackbone(padNodes, {
-						trunkMode: 'auto',
-						trunkBias: request.trunkBias,
-					}).segments;
+			return request.orthogonalRouting === false
+				? planTreeBackbone(padNodes, { trunkBias: request.trunkBias }).segments
+				: planDaisyChainBackbone(padNodes, { trunkBias: request.trunkBias }).segments;
 		default:
 			throw new Error(`Unsupported topology mode: ${(request as { topologyMode: string }).topologyMode}`);
 	}
 };
 
-const validateManualTrunkPoint = (point: { x: number; y: number } | undefined, endpoint: 'start' | 'end'): void => {
-	if (point === undefined || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-		throw new Error(`Daisy Chain mode requires a valid trunk ${endpoint} point.`);
+const resolveCopperPolygons = (
+	padNodes: ReturnType<typeof resolveSelectedPadNodes>,
+	request: SmartCopperPourPreviewRequest,
+	width: number,
+): ReadonlyArray<SkeletonPolygon> => {
+	if (request.topologyMode === 'star') {
+		return buildClosedPolygonOffsetPolygons({
+			polygon: planStarArea(padNodes, { areaShape: request.starAreaShape }).outline,
+			width,
+			cornerStyle: request.cornerStyle,
+		});
 	}
+
+	return buildSkeletonOffsetPolygons({
+		segments: resolveSkeletonSegments(padNodes, request),
+		width,
+		cornerStyle: request.cornerStyle,
+	});
 };

@@ -23,6 +23,12 @@ export interface BuildSkeletonOffsetPolygonsOptions {
 	cornerStyle?: SmartCopperPourCornerStyle;
 }
 
+export interface BuildClosedPolygonOffsetPolygonsOptions {
+	polygon: SkeletonPolygon;
+	width: number;
+	cornerStyle?: SmartCopperPourCornerStyle;
+}
+
 /**
  * Strokes skeleton centerlines into one or more copper polygons.
  *
@@ -41,10 +47,35 @@ export const buildSkeletonOffsetPolygons = (options: BuildSkeletonOffsetPolygons
 		return [];
 	}
 
-	const cornerStyle = options.cornerStyle ?? 'bevel';
+	const cornerStyle = options.cornerStyle ?? 'bevel45';
 	const strokedPolygons = buildStrokePaths(options.segments).flatMap((path) => strokePath(path, strokeRadius, cornerStyle));
 
 	return unionSkeletonPolygons(strokedPolygons);
+};
+
+export const buildClosedPolygonOffsetPolygons = (options: BuildClosedPolygonOffsetPolygonsOptions): SkeletonPolygon[] => {
+	const strokeRadius = options.width / 2;
+	if (options.polygon.vertices.length < 3 || strokeRadius <= 0) {
+		return [];
+	}
+
+	const offset = new ClipperLib.ClipperOffset();
+	offset.AddPath(
+		options.polygon.vertices.map(toClipperPoint),
+		resolveJoinType(options.cornerStyle ?? 'bevel45'),
+		ClipperLib.EndType.etClosedPolygon,
+	);
+
+	const solution = new ClipperLib.Paths();
+	offset.Execute(solution, scaleValue(strokeRadius));
+
+	return unionSkeletonPolygons(
+		solution
+			.filter((path: ReadonlyArray<ClipperPoint>) => path.length >= 3)
+			.map((path: ReadonlyArray<ClipperPoint>) => ({
+				vertices: path.map(fromClipperPoint),
+			})),
+	);
 };
 
 const strokePath = (path: ReadonlyArray<SkeletonPoint>, strokeRadius: number, cornerStyle: SmartCopperPourCornerStyle): SkeletonPolygon[] => {
@@ -53,7 +84,7 @@ const strokePath = (path: ReadonlyArray<SkeletonPoint>, strokeRadius: number, co
 	}
 
 	const offset = new ClipperLib.ClipperOffset();
-	offset.AddPath(path.map(toClipperPoint), resolveJoinType(cornerStyle), resolveEndType());
+	offset.AddPath(path.map(toClipperPoint), resolveJoinType(cornerStyle), resolveEndType(cornerStyle));
 
 	const solution = new ClipperLib.Paths();
 	offset.Execute(solution, scaleValue(strokeRadius));
@@ -165,9 +196,9 @@ const toPointKey = (point: SkeletonPoint): string => `${point.x},${point.y}`;
 
 const resolveJoinType = (cornerStyle: SmartCopperPourCornerStyle): number => {
 	switch (cornerStyle) {
-		case 'miter':
+		case 'rightAngle':
 			return ClipperLib.JoinType.jtMiter;
-		case 'bevel':
+		case 'bevel45':
 			return ClipperLib.JoinType.jtSquare;
 		case 'round':
 		default:
@@ -175,7 +206,13 @@ const resolveJoinType = (cornerStyle: SmartCopperPourCornerStyle): number => {
 	}
 };
 
-const resolveEndType = (): number => ClipperLib.EndType.etOpenRound;
+const resolveEndType = (cornerStyle: SmartCopperPourCornerStyle): number => {
+	if (cornerStyle === 'round') {
+		return ClipperLib.EndType.etOpenRound;
+	}
+
+	return ClipperLib.EndType.etOpenSquare;
+};
 
 const toClipperPoint = (point: SkeletonPoint): ClipperPoint => ({
 	X: scaleValue(point.x),

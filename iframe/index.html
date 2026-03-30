@@ -22,50 +22,40 @@
 					<div>
 						<label for="topology-mode">拓扑模式</label>
 						<select id="topology-mode" name="topologyMode">
-							<option value="tree">树形</option>
-							<option value="star">星形</option>
-							<option value="daisyChain">菊链</option>
+							<option value="daisyChain" selected>树状</option>
+							<option value="star">块状</option>
+						</select>
+					</div>
+					<div data-star-only hidden>
+						<label for="star-area-shape">块状区域</label>
+						<select id="star-area-shape" name="starAreaShape">
+							<option value="convexHull" selected>凸包</option>
+							<option value="boundingBox">边界框</option>
 						</select>
 					</div>
 					<div>
 						<label for="corner-style">拐角样式</label>
 						<select id="corner-style" name="cornerStyle">
 							<option value="round">圆角</option>
-							<option value="miter">斜接</option>
-							<option value="bevel" selected>斜切</option>
+							<option value="rightAngle">直角</option>
+							<option value="bevel45" selected>45°斜切</option>
 						</select>
 					</div>
 					<div>
-						<label for="trunk-bias">主干偏置</label>
-						<select id="trunk-bias" name="trunkBias">
-							<option value="neutral">中性</option>
-							<option value="horizontal">水平</option>
-							<option value="vertical">垂直</option>
-						</select>
-					</div>
-					<div>
-						<label for="width">宽度</label>
+						<label for="width">附加宽度</label>
 						<input id="width" name="width" type="number" min="0.01" step="0.1" value="1" />
 					</div>
 					<div>
 						<label for="keepout-margin">避让边距</label>
 						<input id="keepout-margin" name="keepoutMargin" type="number" min="0" step="0.1" value="0" />
 					</div>
-					<div data-daisy-only hidden>
-						<label for="trunk-start-x">主干起点 X</label>
-						<input id="trunk-start-x" name="trunkStartX" type="number" step="0.1" value="0" />
+					<div>
+						<label for="use-node-size-as-base-width">节点尺寸作为基础宽度</label>
+						<input id="use-node-size-as-base-width" name="useNodeSizeAsBaseWidth" type="checkbox" checked />
 					</div>
-					<div data-daisy-only hidden>
-						<label for="trunk-start-y">主干起点 Y</label>
-						<input id="trunk-start-y" name="trunkStartY" type="number" step="0.1" value="0" />
-					</div>
-					<div data-daisy-only hidden>
-						<label for="trunk-end-x">主干终点 X</label>
-						<input id="trunk-end-x" name="trunkEndX" type="number" step="0.1" value="10" />
-					</div>
-					<div data-daisy-only hidden>
-						<label for="trunk-end-y">主干终点 Y</label>
-						<input id="trunk-end-y" name="trunkEndY" type="number" step="0.1" value="0" />
+					<div data-tree-like-only>
+						<label for="orthogonal-routing">正交走向</label>
+						<input id="orthogonal-routing" name="orthogonalRouting" type="checkbox" checked />
 					</div>
 				</div>
 			</form>

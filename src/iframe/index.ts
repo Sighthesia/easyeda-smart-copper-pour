@@ -7,7 +7,7 @@ import type {
 import {
 	type SmartCopperPourFormElement,
 	applyStoredFormState,
-	isDaisyChainMode,
+	isStarMode,
 	loadStoredFormState,
 	persistFormState,
 	readSmartCopperPourRequest,
@@ -64,24 +64,29 @@ const updateSelectionSummary = (
 	selectionCount.textContent = String(selectionSummary.connectionCount);
 };
 
-const syncModeVisibility = (form: SmartCopperPourFormElement, daisyOnlyFields: NodeListOf<HTMLElement>): void => {
-	const daisyChainMode = isDaisyChainMode(form.topologyMode.value);
-	daisyOnlyFields.forEach((element) => {
-		element.hidden = !daisyChainMode;
+const syncModeVisibility = (
+	form: SmartCopperPourFormElement,
+	starOnlyFields: NodeListOf<HTMLElement>,
+	treeLikeOnlyFields: NodeListOf<HTMLElement>,
+): void => {
+	const starMode = isStarMode(form.topologyMode.value);
+	starOnlyFields.forEach((element) => {
+		element.hidden = !starMode;
+	});
+	treeLikeOnlyFields.forEach((element) => {
+		element.hidden = starMode;
 	});
 };
 
 const registerFormPersistence = (form: SmartCopperPourFormElement, onChange: () => void): void => {
 	[
 		form.topologyMode,
+		form.starAreaShape,
 		form.cornerStyle,
-		form.trunkBias,
 		form.width,
 		form.keepoutMargin,
-		form.trunkStartX,
-		form.trunkStartY,
-		form.trunkEndX,
-		form.trunkEndY,
+		form.useNodeSizeAsBaseWidth,
+		form.orthogonalRouting,
 	].forEach((field) => {
 		field.addEventListener('change', onChange);
 	});
@@ -183,7 +188,8 @@ export const bootstrapIframeApp = (
 	const selectionNet = documentObject.getElementById('selection-net') as HTMLElement | null;
 	const selectionLayer = documentObject.getElementById('selection-layer') as HTMLElement | null;
 	const selectionCount = documentObject.getElementById('selection-pad-count') as HTMLElement | null;
-	const daisyOnlyFields = documentObject.querySelectorAll<HTMLElement>('[data-daisy-only]');
+	const starOnlyFields = documentObject.querySelectorAll<HTMLElement>('[data-star-only]');
+	const treeLikeOnlyFields = documentObject.querySelectorAll<HTMLElement>('[data-tree-like-only]');
 	if (statusPanel === null || selectionNet === null || selectionLayer === null || selectionCount === null) {
 		return;
 	}
@@ -214,7 +220,7 @@ export const bootstrapIframeApp = (
 
 	const handleFormChange = (): void => {
 		app.persistFormState();
-		syncModeVisibility(form, daisyOnlyFields);
+		syncModeVisibility(form, starOnlyFields, treeLikeOnlyFields);
 	};
 
 	registerFormPersistence(form, handleFormChange);
@@ -257,7 +263,7 @@ export const bootstrapIframeApp = (
 		refreshSelection('已同步当前选区。');
 	});
 
-	syncModeVisibility(form, daisyOnlyFields);
+	syncModeVisibility(form, starOnlyFields, treeLikeOnlyFields);
 	setStatus(statusPanel, '正在读取当前选区...', 'neutral');
 	refreshSelection('已准备好选择。请调整参数后预览。');
 	const selectionSyncTimer = globalThis.setInterval(() => {
