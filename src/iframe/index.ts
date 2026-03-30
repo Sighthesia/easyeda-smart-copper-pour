@@ -59,8 +59,8 @@ const updateSelectionSummary = (
 	selectionLayer: HTMLElement,
 	selectionCount: HTMLElement,
 ): void => {
-	selectionNet.textContent = selectionSummary.netName ?? 'Unknown';
-	selectionLayer.textContent = selectionSummary.layerName ?? 'Unknown';
+	selectionNet.textContent = selectionSummary.netName ?? '未知';
+	selectionLayer.textContent = selectionSummary.layerName ?? '未知';
 	selectionCount.textContent = String(selectionSummary.connectionCount);
 };
 

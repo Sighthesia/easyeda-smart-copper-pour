@@ -7,66 +7,101 @@
 		<link rel="stylesheet" href="/iframe/index.css" />
 	</head>
 	<body>
-		<div class="main">
-			<section>
-				<h1>智能铜皮生成</h1>
-				<div class="summary">
-					<div><strong>网络</strong><span id="selection-net">加载中...</span></div>
-					<div><strong>层</strong><span id="selection-layer">加载中...</span></div>
-					<div><strong>节点</strong><span id="selection-pad-count">0</span></div>
+		<div class="app-shell">
+			<header class="toolbar">
+				<div class="toolbar-main">
+					<p class="eyebrow">嘉立创EDA</p>
+					<h1>智能铜皮生成</h1>
+					<p class="toolbar-subtitle">针对当前选中的同网络节点快速生成铜皮骨架。建议先预览，再确认应用。</p>
+					<div class="toolbar-context status-card">
+						<div class="toolbar-context-item">
+							<span class="toolbar-context-label">网络</span>
+							<span id="selection-net" class="toolbar-context-value">加载中...</span>
+						</div>
+						<div class="toolbar-context-item">
+							<span class="toolbar-context-label">层</span>
+							<span id="selection-layer" class="toolbar-context-value">加载中...</span>
+						</div>
+						<div class="toolbar-context-item">
+							<span class="toolbar-context-label">节点</span>
+							<span id="selection-pad-count" class="toolbar-context-value">0</span>
+						</div>
+					</div>
 				</div>
-			</section>
+			</header>
 
-			<form id="smart-copper-pour-form">
-				<div class="grid">
-					<div>
-						<label for="topology-mode">拓扑模式</label>
-						<select id="topology-mode" name="topologyMode">
-							<option value="daisyChain" selected>树状</option>
-							<option value="star">块状</option>
-						</select>
+			<main class="layout">
+				<section class="panel control-panel">
+					<div class="panel-heading">
+						<div>
+							<h2>生成参数</h2>
+							<p class="panel-subtitle">不同拓扑适合不同走线风格。块状更聚合，树状更适合有主干的连接关系。</p>
+						</div>
 					</div>
-					<div data-star-only hidden>
-						<label for="star-area-shape">块状区域</label>
-						<select id="star-area-shape" name="starAreaShape">
-							<option value="convexHull" selected>凸包</option>
-							<option value="boundingBox">边界框</option>
-						</select>
-					</div>
-					<div>
-						<label for="corner-style">拐角样式</label>
-						<select id="corner-style" name="cornerStyle">
-							<option value="round">圆角</option>
-							<option value="rightAngle">直角</option>
-							<option value="bevel45" selected>45°斜切</option>
-						</select>
-					</div>
-					<div>
-						<label for="width">附加宽度</label>
-						<input id="width" name="width" type="number" min="0" step="0.1" value="1" />
-					</div>
-					<div>
-						<label for="keepout-margin">避让边距</label>
-						<input id="keepout-margin" name="keepoutMargin" type="number" min="0" step="0.1" value="0" />
-					</div>
-					<div>
-						<label for="use-node-size-as-base-width">节点尺寸作为基础宽度</label>
-						<input id="use-node-size-as-base-width" name="useNodeSizeAsBaseWidth" type="checkbox" checked />
-					</div>
-					<div data-tree-like-only>
-						<label for="orthogonal-routing">正交走向</label>
-						<input id="orthogonal-routing" name="orthogonalRouting" type="checkbox" checked />
-					</div>
-				</div>
-			</form>
+
+					<form id="smart-copper-pour-form">
+						<div class="grid">
+							<label class="field" for="topology-mode">
+								<span>拓扑模式</span>
+								<select id="topology-mode" name="topologyMode">
+									<option value="daisyChain" selected>树状</option>
+									<option value="star">块状</option>
+								</select>
+								<small class="field-help">树状强调主干连接，块状强调整体覆盖。</small>
+							</label>
+							<label class="field" for="star-area-shape" data-star-only hidden>
+								<span>块状区域</span>
+								<select id="star-area-shape" name="starAreaShape">
+									<option value="convexHull" selected>凸包</option>
+									<option value="boundingBox">边界框</option>
+								</select>
+								<small class="field-help">凸包更贴合节点轮廓，边界框更规则。</small>
+							</label>
+							<label class="field" for="corner-style">
+								<span>拐角样式</span>
+								<select id="corner-style" name="cornerStyle">
+									<option value="round">圆角</option>
+									<option value="rightAngle">直角</option>
+									<option value="bevel45" selected>45°斜切</option>
+								</select>
+								<small class="field-help">45°斜切通常更容易兼顾制造习惯与外观。</small>
+							</label>
+							<label class="field" for="width">
+								<span>附加宽度</span>
+								<input id="width" name="width" type="number" min="0" step="0.1" value="1" />
+								<small class="field-help">在基础宽度上额外增加的铜皮宽度，单位与 PCB 编辑器保持一致。</small>
+							</label>
+							<label class="field" for="keepout-margin">
+								<span>避让边距</span>
+								<input id="keepout-margin" name="keepoutMargin" type="number" min="0" step="0.1" value="0" />
+								<small class="field-help">增大后会与周边对象保持更安全的距离，但可能降低可通过性。</small>
+							</label>
+							<label class="toggle-field" for="use-node-size-as-base-width">
+								<span class="toggle-copy">
+									<span class="toggle-title">节点尺寸作为基础宽度</span>
+									<small class="field-help">适合节点尺寸差异较大时自动取更稳妥的宽度基准。</small>
+								</span>
+								<input id="use-node-size-as-base-width" name="useNodeSizeAsBaseWidth" type="checkbox" checked />
+							</label>
+							<label class="toggle-field" for="orthogonal-routing" data-tree-like-only>
+								<span class="toggle-copy">
+									<span class="toggle-title">正交走向</span>
+									<small class="field-help">优先保持横平竖直，适合规则布局与更清晰的主干路径。</small>
+								</span>
+								<input id="orthogonal-routing" name="orthogonalRouting" type="checkbox" checked />
+							</label>
+						</div>
+					</form>
+				</section>
+			</main>
 		</div>
 
-		<div class="footer">
-			<div class="status" id="status-panel" data-tone="neutral">正在读取当前选区...</div>
+		<div class="action-bar">
+			<div class="status status-card" id="status-panel" data-tone="neutral">正在读取当前选区...</div>
 			<div class="actions">
-				<button type="button" id="preview-button">预览</button>
-				<button type="button" id="apply-button">应用</button>
-				<button type="button" id="clear-button">清除预览</button>
+				<button type="button" id="clear-button" class="secondary-action">清除预览</button>
+				<button type="button" id="preview-button">预览效果</button>
+				<button type="button" id="apply-button" class="primary-action">应用铜皮</button>
 			</div>
 		</div>
 

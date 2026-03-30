@@ -252,8 +252,8 @@ describe('iframe shell', () => {
 	test('renders summary label as node count', () => {
 		const iframeHtml = readFileSync(resolve(__dirname, '../../iframe/index.html'), 'utf8');
 
-		expect(iframeHtml).toContain('<strong>节点</strong>');
-		expect(iframeHtml).not.toContain('<strong>焊盘</strong>');
+		expect(iframeHtml).toContain('<span class="toolbar-context-label">节点</span>');
+		expect(iframeHtml).not.toContain('<span class="toolbar-context-label">焊盘</span>');
 	});
 
 	test('keeps iframe default corner style aligned to bevel45', () => {

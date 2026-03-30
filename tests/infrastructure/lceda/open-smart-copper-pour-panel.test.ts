@@ -35,12 +35,13 @@ describe('openSmartCopperPourPanel', () => {
 		const { openSmartCopperPourPanel } = await import('../../../src/infrastructure/lceda/open-smart-copper-pour-panel');
 		await openSmartCopperPourPanel();
 
-		expect(openIFrame).toHaveBeenCalledWith('/iframe/index.html', 420, 560, 'smart-copper-pour', {
+		expect(openIFrame).toHaveBeenCalledWith('/iframe/index.html', 480, 700, 'smart-copper-pour', {
 			buttonCallbackFn: expect.any(Function),
 			grayscaleMask: true,
 			maximizeButton: true,
 			minimizeButton: true,
 			onBeforeCloseCallFn: expect.any(Function),
+			title: '智能铜皮生成',
 		});
 	});
 
