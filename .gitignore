@@ -8,3 +8,6 @@
 debug.log
 .worktrees/
 .ace-tool/
+.agents/
+.opencode/
+.trellis/
