@@ -2,7 +2,7 @@ import type { SmartCopperPourPreviewRequest } from '../../application/smart-copp
 import { resolveFinalCopperWidth } from '../../domain/copper-width';
 import { planDaisyChainBackbone } from '../../domain/daisy-chain-planner';
 import { planOrthogonalTreeBackbone } from '../../domain/orthogonal-tree-planner';
-import { buildPadNodeOutline } from '../../domain/pad-node-outline';
+import { buildPadNodeOutline, projectBoardDirectionToNodeLocal, rotateLocalPointToBoard } from '../../domain/pad-node-outline';
 import type { SkeletonPoint, SkeletonPolygon, SkeletonSegment } from '../../domain/skeleton-types';
 import { planStarArea } from '../../domain/star-area-planner';
 import { planStarBackbone } from '../../domain/star-backbone-planner';
@@ -10,6 +10,7 @@ import { planTreeBackbone } from '../../domain/tree-backbone-planner';
 import { unionSkeletonPolygons } from '../geometry/polygon-boolean';
 import { buildClosedPolygonOffsetPolygons, buildCornerStyledUnionPolygons, buildSkeletonOffsetPolygons } from '../geometry/polygon-offset-builder';
 import { isSupportedLcedaCopperLayerId, toLcedaLayerId } from './layer-name';
+import { logSmartCopperPourOutput } from './runtime-log';
 import { type LcedaSelectedPrimitivesReader, createLcedaSelectedPrimitivesReader, normalizeSelectedSnapshotPrimitives } from './selection-inspector';
 import { resolveSelectedPadNodes } from './selection-resolver';
 
@@ -51,6 +52,8 @@ export const createRuntimeCopperPlanBuilder = (
 			throw new Error(`Unsupported copper layer: ${layerName}`);
 		}
 
+		logSmartCopperPourOutput(createOutputPayload(selectedPrimitives, padNodes, polygons, request, width, layerName, layerId));
+
 		return {
 			layerId,
 			layerName,
@@ -58,6 +61,50 @@ export const createRuntimeCopperPlanBuilder = (
 			polygons,
 		};
 	},
+});
+
+const createOutputPayload = (
+	selectedPrimitives: ReadonlyArray<ReturnType<typeof normalizeSelectedSnapshotPrimitives>[number]>,
+	padNodes: ReturnType<typeof resolveSelectedPadNodes>,
+	polygons: ReadonlyArray<SkeletonPolygon>,
+	request: SmartCopperPourPreviewRequest,
+	finalWidth: number,
+	layerName: string,
+	layerId: number,
+): Record<string, unknown> => ({
+	action: 'buildWriterInput',
+	topologyMode: request.topologyMode,
+	layerName,
+	layerId,
+	finalWidth,
+	selectedPads: selectedPrimitives
+		.filter((primitive) => primitive.type === 'PAD')
+		.map((primitive) => ({
+			id: primitive.id,
+			net: primitive.net ?? null,
+			layer: primitive.layer ?? null,
+			center: { x: primitive.x, y: primitive.y },
+			width: primitive.width ?? null,
+			height: primitive.height ?? null,
+			rotation: primitive.rotation ?? 0,
+			padShape: primitive.padShape ?? null,
+		})),
+	nodesForPlanning: padNodes.map((node) => ({
+		id: node.id,
+		net: node.net,
+		layer: node.layer,
+		center: { x: node.center.x, y: node.center.y },
+		width: node.width ?? node.effectiveRadius * 2,
+		height: node.height ?? node.effectiveRadius * 2,
+		rotation: node.rotation ?? 0,
+		outlineShape: node.outlineShape ?? 'ellipse',
+		effectiveRadius: node.effectiveRadius,
+		outlineVertices: buildPadNodeOutline(node).vertices.map((vertex) => ({ x: vertex.x, y: vertex.y })),
+	})),
+	generatedCopperAreaNodes: polygons.map((polygon, polygonIndex) => ({
+		polygonIndex,
+		vertices: polygon.vertices.map((vertex) => ({ x: vertex.x, y: vertex.y })),
+	})),
 });
 
 const resolveSkeletonSegments = (
@@ -116,27 +163,33 @@ const resolveCopperPolygons = (
 		});
 	}
 
-	const polygons = unionSkeletonPolygons([
-		...segmentPolygons,
-		...transitionGeometry.transitionPolygons,
-		...padNodes.flatMap((padNode) => {
-			const outline = buildPadNodeOutline(padNode);
-			if (request.width <= 0) {
-				return [outline];
-			}
+	const nodeCoveragePolygons = buildNodeCoveragePolygons(padNodes, request);
+	const polygons = unionSkeletonPolygons([...segmentPolygons, ...transitionGeometry.transitionPolygons, ...nodeCoveragePolygons]);
 
-			return buildClosedPolygonOffsetPolygons({
-				polygon: outline,
-				width: request.width,
-				cornerStyle: request.cornerStyle,
-			});
-		}),
-	]);
-
-	return buildCornerStyledUnionPolygons({
+	const styledPolygons = buildCornerStyledUnionPolygons({
 		polygons,
 		width,
 		cornerStyle: request.cornerStyle,
+	});
+
+	return unionSkeletonPolygons([...styledPolygons, ...nodeCoveragePolygons]);
+};
+
+const buildNodeCoveragePolygons = (
+	padNodes: ReturnType<typeof resolveSelectedPadNodes>,
+	request: SmartCopperPourPreviewRequest,
+): ReadonlyArray<SkeletonPolygon> => {
+	return padNodes.flatMap((padNode) => {
+		const outline = buildPadNodeOutline(padNode);
+		if (request.width <= 0) {
+			return [outline];
+		}
+
+		return buildClosedPolygonOffsetPolygons({
+			polygon: outline,
+			width: request.width,
+			cornerStyle: request.cornerStyle,
+		});
 	});
 };
 
@@ -233,8 +286,24 @@ const resolveNodeConnectionWidth = (
 		return Math.max(padWidth, padHeight) + additionalWidth;
 	}
 
-	const orthogonalBaseWidth = Math.abs(direction.x) >= Math.abs(direction.y) ? padHeight : padWidth;
-	return orthogonalBaseWidth + additionalWidth;
+	const localDirection = projectBoardDirectionToNodeLocal(direction, node.rotation);
+	const localPerpendicular = {
+		x: -localDirection.y,
+		y: localDirection.x,
+	};
+	const directionLength = Math.hypot(localPerpendicular.x, localPerpendicular.y);
+	if (directionLength <= 0.001) {
+		return Math.max(padWidth, padHeight) + additionalWidth;
+	}
+
+	const unitPerpendicular = {
+		x: localPerpendicular.x / directionLength,
+		y: localPerpendicular.y / directionLength,
+	};
+	const halfWidth = padWidth / 2;
+	const halfHeight = padHeight / 2;
+	const lateralHalfSpan = Math.abs(unitPerpendicular.x) * halfWidth + Math.abs(unitPerpendicular.y) * halfHeight;
+	return lateralHalfSpan * 2 + additionalWidth;
 };
 
 const buildTransitionPolygon = (
@@ -314,18 +383,17 @@ const projectNodeBoundaryPoint = (
 	const unitY = deltaY / length;
 	const radiusX = (padNode.width ?? padNode.effectiveRadius * 2) / 2;
 	const radiusY = (padNode.height ?? padNode.effectiveRadius * 2) / 2;
+	const localDirection = projectBoardDirectionToNodeLocal({ x: unitX, y: unitY }, padNode.rotation);
 	const distance =
 		padNode.outlineShape === 'rect'
 			? Math.min(
-					unitX === 0 ? Number.POSITIVE_INFINITY : radiusX / Math.abs(unitX),
-					unitY === 0 ? Number.POSITIVE_INFINITY : radiusY / Math.abs(unitY),
+					localDirection.x === 0 ? Number.POSITIVE_INFINITY : radiusX / Math.abs(localDirection.x),
+					localDirection.y === 0 ? Number.POSITIVE_INFINITY : radiusY / Math.abs(localDirection.y),
 				)
-			: 1 / Math.sqrt((unitX * unitX) / (radiusX * radiusX) + (unitY * unitY) / (radiusY * radiusY));
+			: 1 /
+				Math.sqrt((localDirection.x * localDirection.x) / (radiusX * radiusX) + (localDirection.y * localDirection.y) / (radiusY * radiusY));
 
-	return {
-		x: padNode.center.x + unitX * distance,
-		y: padNode.center.y + unitY * distance,
-	};
+	return rotateLocalPointToBoard(padNode.center, { x: localDirection.x * distance, y: localDirection.y * distance }, padNode.rotation);
 };
 
 const toPointKey = (point: { x: number; y: number }): string => `${point.x},${point.y}`;

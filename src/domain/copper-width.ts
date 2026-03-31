@@ -9,7 +9,13 @@ export const resolveBaseCopperWidth = (
 		return 0;
 	}
 
-	return Math.max(...padNodes.map((padNode) => padNode.effectiveRadius * 2));
+	return Math.max(
+		...padNodes.map((padNode) => {
+			const width = padNode.width ?? padNode.effectiveRadius * 2;
+			const height = padNode.height ?? padNode.effectiveRadius * 2;
+			return Math.max(width, height);
+		}),
+	);
 };
 
 export const resolveFinalCopperWidth = (

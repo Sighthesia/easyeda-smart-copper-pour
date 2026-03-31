@@ -13,5 +13,6 @@ export interface PadNode {
 	effectiveRadius: number;
 	width?: number;
 	height?: number;
+	rotation?: number;
 	outlineShape?: 'ellipse' | 'rect';
 }

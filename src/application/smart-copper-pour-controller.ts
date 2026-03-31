@@ -297,6 +297,7 @@ export const createSelectionFingerprint = (normalizedNodes: ReadonlyArray<PadNod
 				layer: node.layer,
 				net: node.net,
 				outlineShape: node.outlineShape,
+				rotation: node.rotation,
 				width: node.width,
 			}))
 			.sort((leftNode, rightNode) => {

@@ -72,7 +72,7 @@ describe('resolveSelectedPadNodes', () => {
 	});
 
 	test('rejects a one-pad selection', () => {
-		expect(() => resolveSelectedPadNodes([createPad()])).toThrow('最少选择两个焊盘才可进行铺铜.');
+		expect(() => resolveSelectedPadNodes([createPad()])).toThrow('Select at least two pads on the same net.');
 	});
 
 	test('normalizes a pad plus via when the via spans the resolved target layer', () => {
@@ -208,6 +208,14 @@ describe('resolveSelectedPadNodes', () => {
 		);
 	});
 
+	test('rejects pads on unsupported inner layers before plan creation', () => {
+		expectSelectionError(
+			[createPad({ id: 'pad-1', layer: 'Inner31' }), createPad({ id: 'pad-2', layer: 'Inner31' })],
+			'selection-layer-unsupported',
+			'Pad pad-1 uses unsupported layer Inner31.',
+		);
+	});
+
 	test('rejects pads without a usable radius', () => {
 		expect(() =>
 			resolveSelectedPadNodes([
@@ -265,5 +273,15 @@ describe('resolveSelectedPadNodes', () => {
 				outlineShape: 'ellipse',
 			},
 		]);
+	});
+
+	test('normalizes ROUND pads as ellipse outlines instead of rectangles', () => {
+		const padNodes = resolveSelectedPadNodes([
+			createPad({ id: 'pad-1', padShape: 'ROUND', width: 3, height: 3, padRadius: 1.5 }),
+			createPad({ id: 'pad-2', x: 5, y: 6, padShape: 'ROUND', width: 2, height: 2, padRadius: 1 }),
+		]);
+
+		expect(padNodes[0]?.outlineShape).toBe('ellipse');
+		expect(padNodes[1]?.outlineShape).toBe('ellipse');
 	});
 });

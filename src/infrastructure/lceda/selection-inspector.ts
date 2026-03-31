@@ -7,7 +7,11 @@ import { type SmartCopperPourSelectionInspector, createSmartCopperPourSelectionS
 import { toLcedaLayerName } from './layer-name';
 import { normalizeLcedaSelectionPrimitives } from './selection-expander';
 import { type LcedaSelectablePrimitive, resolveSelectionSummaryNodes } from './selection-resolver';
-import { type LcedaPadPrimitiveShape, isLcedaPadPrimitive } from './selection-shapes';
+import { type LcedaPadPrimitiveShape, type LcedaViaPrimitiveShape, isLcedaPadPrimitive, isLcedaViaPrimitiveCandidate } from './selection-shapes';
+
+const THROUGH_VIA_TYPE = 0;
+const BLIND_VIA_TYPE = 1;
+const STITCHING_VIA_TYPE = 2;
 
 interface LcedaPadSelectablePrimitive extends LcedaSelectablePrimitive {
 	type: 'PAD';
@@ -15,6 +19,7 @@ interface LcedaPadSelectablePrimitive extends LcedaSelectablePrimitive {
 	layer: string | null;
 	x: number;
 	y: number;
+	rotation?: number | null;
 	padShape?: string | null;
 	width: number | null;
 	height: number | null;
@@ -61,16 +66,6 @@ export interface LcedaSelectionRuntime {
 	pcb_SelectControl?: {
 		getAllSelectedPrimitives?: () => Promise<unknown>;
 	};
-}
-
-interface LcedaViaPrimitiveShape {
-	getState_PrimitiveId: () => string;
-	getState_X: () => number;
-	getState_Y: () => number;
-	getState_Net: () => string | undefined;
-	getState_StartLayer: () => unknown;
-	getState_EndLayer: () => unknown;
-	getState_Diameter?: () => unknown;
 }
 
 export const createSmartCopperPourSelectionInspector = (reader: LcedaSelectedPrimitivesReader): SmartCopperPourSelectionInspector => ({
@@ -153,7 +148,7 @@ const toViaSelectablePrimitive = (primitive: IPCB_Primitive & LcedaViaPrimitiveS
 		net: primitive.getState_Net() ?? null,
 		x: primitive.getState_X(),
 		y: primitive.getState_Y(),
-		layerSpan: toLayerSpan(primitive.getState_StartLayer(), primitive.getState_EndLayer()),
+		layerSpan: resolveRuntimeViaLayerSpan(primitive) ?? { startLayer: '', endLayer: '' },
 		padRadius: typeof diameter === 'number' && Number.isFinite(diameter) && diameter > 0 ? diameter / 2 : null,
 	};
 };
@@ -165,6 +160,7 @@ const toPadSelectablePrimitive = (primitive: IPCB_Primitive & LcedaPadPrimitiveS
 	const width = Array.isArray(padShape) && typeof padShape[1] === 'number' ? padShape[1] : null;
 	const height = Array.isArray(padShape) && typeof padShape[2] === 'number' ? padShape[2] : width;
 	const holeRadius = Array.isArray(holeShape) && typeof holeShape[1] === 'number' ? holeShape[1] / 2 : null;
+	const rotation = typeof primitive.getState_Rotation === 'function' ? primitive.getState_Rotation() : null;
 
 	return {
 		id: primitive.getState_PrimitiveId(),
@@ -173,6 +169,7 @@ const toPadSelectablePrimitive = (primitive: IPCB_Primitive & LcedaPadPrimitiveS
 		layer: toLcedaLayerName(primitive.getState_Layer()),
 		x: primitive.getState_X(),
 		y: primitive.getState_Y(),
+		rotation: typeof rotation === 'number' && Number.isFinite(rotation) ? rotation : null,
 		padShape: padShapeType,
 		width,
 		height,
@@ -238,23 +235,20 @@ const isRuntimePrimitive = (primitive: unknown): primitive is IPCB_Primitive => 
 };
 
 const isSupportedLcedaViaPrimitive = (primitive: IPCB_Primitive): primitive is IPCB_Primitive & LcedaViaPrimitiveShape => {
-	const candidate = primitive as Partial<LcedaViaPrimitiveShape>;
+	if (!isLcedaViaPrimitiveCandidate(primitive)) {
+		return false;
+	}
+
 	return (
-		typeof candidate.getState_StartLayer === 'function' &&
-		typeof candidate.getState_EndLayer === 'function' &&
-		typeof candidate.getState_Diameter === 'function' &&
-		typeof candidate.getState_X === 'function' &&
-		typeof candidate.getState_Y === 'function' &&
-		typeof candidate.getState_Net === 'function' &&
-		hasFiniteCoordinate(candidate.getState_X()) &&
-		hasFiniteCoordinate(candidate.getState_Y()) &&
-		toLcedaLayerName(candidate.getState_StartLayer()) !== null &&
-		toLcedaLayerName(candidate.getState_EndLayer()) !== null
+		typeof primitive.getState_Diameter === 'function' &&
+		hasFiniteCoordinate(primitive.getState_X()) &&
+		hasFiniteCoordinate(primitive.getState_Y()) &&
+		resolveRuntimeViaLayerSpan(primitive) !== null
 	);
 };
 
 const isUnsupportedLcedaViaPrimitive = (primitive: IPCB_Primitive): primitive is IPCB_Primitive & LcedaViaPrimitiveShape => {
-	if (isSupportedLcedaViaPrimitive(primitive) || isLcedaPadPrimitive(primitive)) {
+	if (isSupportedLcedaViaPrimitive(primitive) || isLcedaPadPrimitive(primitive) || !isLcedaViaPrimitiveCandidate(primitive)) {
 		return false;
 	}
 
@@ -266,27 +260,44 @@ const isUnsupportedLcedaViaPrimitive = (primitive: IPCB_Primitive): primitive is
 		typeof primitive.getState_Diameter !== 'function' ||
 		!hasFiniteCoordinate(primitive.getState_X()) ||
 		!hasFiniteCoordinate(primitive.getState_Y()) ||
-		toLcedaLayerName(primitive.getState_StartLayer()) === null ||
-		toLcedaLayerName(primitive.getState_EndLayer()) === null
+		resolveRuntimeViaLayerSpan(primitive) === null
 	);
 };
 
 const hasLcedaViaPrimitiveSignature = (primitive: IPCB_Primitive): primitive is IPCB_Primitive & LcedaViaPrimitiveShape => {
 	const candidate = primitive as Partial<LcedaViaPrimitiveShape>;
 	return (
-		typeof candidate.getState_StartLayer === 'function' &&
-		typeof candidate.getState_EndLayer === 'function' &&
 		typeof candidate.getState_X === 'function' &&
 		typeof candidate.getState_Y === 'function' &&
-		typeof candidate.getState_Net === 'function'
+		typeof candidate.getState_Net === 'function' &&
+		(typeof candidate.getState_Diameter === 'function' ||
+			typeof candidate.getState_ViaType === 'function' ||
+			typeof candidate.getState_DesignRuleBlindViaName === 'function')
 	);
 };
 
-const toLayerSpan = (startLayer: unknown, endLayer: unknown): SmartCopperPourViaLayerSpan => {
-	return {
-		startLayer: toLcedaLayerName(startLayer) ?? '',
-		endLayer: toLcedaLayerName(endLayer) ?? '',
-	};
+const resolveRuntimeViaLayerSpan = (primitive: IPCB_Primitive & LcedaViaPrimitiveShape): SmartCopperPourViaLayerSpan | null => {
+	const viaType = typeof primitive.getState_ViaType === 'function' ? primitive.getState_ViaType() : undefined;
+	const blindViaRuleName = typeof primitive.getState_DesignRuleBlindViaName === 'function' ? primitive.getState_DesignRuleBlindViaName() : null;
+	if (viaType === THROUGH_VIA_TYPE || viaType === STITCHING_VIA_TYPE) {
+		return {
+			startLayer: 'TopLayer',
+			endLayer: 'BottomLayer',
+		};
+	}
+
+	if (viaType === BLIND_VIA_TYPE || (typeof blindViaRuleName === 'string' && blindViaRuleName.trim().length > 0)) {
+		return null;
+	}
+
+	if (blindViaRuleName === null || blindViaRuleName === undefined || blindViaRuleName === '') {
+		return {
+			startLayer: 'TopLayer',
+			endLayer: 'BottomLayer',
+		};
+	}
+
+	return null;
 };
 
 const hasFiniteCoordinate = (value: unknown): value is number => {

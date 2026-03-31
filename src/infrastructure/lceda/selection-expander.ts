@@ -1,5 +1,5 @@
 import { SelectionResolutionError } from './selection-resolver';
-import { isLcedaPadPrimitive } from './selection-shapes';
+import { isLcedaPadPrimitive, isLcedaViaPrimitiveCandidate } from './selection-shapes';
 
 interface LcedaExpandableSelection {
 	getState_PrimitiveId: () => string;
@@ -21,7 +21,7 @@ export const normalizeLcedaSelectionPrimitives = (primitives: readonly unknown[]
 			if (expandedSelection.children.length === 0) {
 				throw new SelectionResolutionError(
 					'selection-too-small',
-					`Expandable selection ${expandedSelection.parentSelectionId} has no pad-like children.`,
+					`Expandable selection ${expandedSelection.parentSelectionId} has no node-like children.`,
 				);
 			}
 
@@ -99,6 +99,8 @@ const expandLcedaSelection = (selection: unknown): LcedaExpandedSelection | null
 
 	return {
 		parentSelectionId: candidate.getState_PrimitiveId(),
-		children: children.filter(isLcedaPadPrimitive),
+		children: children.filter((child): child is IPCB_Primitive => {
+			return isLcedaPadPrimitive(child as IPCB_Primitive) || isLcedaViaPrimitiveCandidate(child as IPCB_Primitive);
+		}),
 	};
 };

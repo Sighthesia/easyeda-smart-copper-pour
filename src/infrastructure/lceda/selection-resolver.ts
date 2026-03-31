@@ -1,4 +1,5 @@
 import type { PadNode } from '../../domain/pad-node';
+import { toLcedaLayerId } from './layer-name';
 
 /**
  * Minimal LCEDA primitive shape consumed by the selection resolver.
@@ -13,6 +14,7 @@ export interface LcedaSelectablePrimitive {
 	layerSpan?: LcedaViaLayerSpan | null;
 	x?: number;
 	y?: number;
+	rotation?: number | null;
 	padShape?: string | null;
 	padRadius?: number | null;
 	holeRadius?: number | null;
@@ -76,6 +78,7 @@ export class SelectionResolutionError extends Error {
 			| 'selection-mixed-layer'
 			| 'selection-net-missing'
 			| 'selection-layer-missing'
+			| 'selection-layer-unsupported'
 			| 'selection-via-layer-invalid'
 			| 'selection-via-unsupported'
 			| 'selection-pad-invalid',
@@ -110,6 +113,7 @@ export const resolveSelectedPadNodes = (primitives: readonly LcedaSelectablePrim
 
 			const currentNet = requireValue(primitive.net, 'selection-net-missing', 'Selected pads must belong to a named net.');
 			const currentLayer = requireValue(primitive.layer, 'selection-layer-missing', 'Selected pads must be on a named layer.');
+			requireSupportedLayerName(currentLayer, primitive.id);
 			if (net === null) {
 				net = currentNet;
 				layer = currentLayer;
@@ -139,6 +143,7 @@ export const resolveSelectedPadNodes = (primitives: readonly LcedaSelectablePrim
 				effectiveRadius: resolveEffectiveRadius(primitive),
 				width: resolvePrimitiveWidth(primitive),
 				height: resolvePrimitiveHeight(primitive),
+				rotation: resolvePrimitiveRotation(primitive),
 				outlineShape: resolvePadOutlineShape(primitive),
 			});
 			padCount += 1;
@@ -245,6 +250,7 @@ export const resolveSelectionSummaryNodes = (primitives: readonly LcedaSelectabl
 
 			const currentNet = requireValue(primitive.net, 'selection-net-missing', 'Selected pads must belong to a named net.');
 			const currentLayer = requireValue(primitive.layer, 'selection-layer-missing', 'Selected pads must be on a named layer.');
+			requireSupportedLayerName(currentLayer, primitive.id);
 			normalizedNodes.push({
 				id: primitive.id,
 				net: currentNet,
@@ -256,6 +262,7 @@ export const resolveSelectionSummaryNodes = (primitives: readonly LcedaSelectabl
 				effectiveRadius: resolveEffectiveRadius(primitive),
 				width: resolvePrimitiveWidth(primitive),
 				height: resolvePrimitiveHeight(primitive),
+				rotation: resolvePrimitiveRotation(primitive),
 				outlineShape: resolvePadOutlineShape(primitive),
 			});
 			continue;
@@ -447,6 +454,12 @@ const requireValue = (value: string | null | undefined, code: 'selection-net-mis
 	return normalizedValue;
 };
 
+const requireSupportedLayerName = (layerName: string, primitiveId: string): void => {
+	if (!isSupportedLayerName(layerName)) {
+		throw new SelectionResolutionError('selection-layer-unsupported', `Pad ${primitiveId} uses unsupported layer ${layerName}.`);
+	}
+};
+
 const resolveEffectiveRadius = (pad: LcedaPadLike): number => {
 	const effectiveRadius = resolveRadiusValue(pad);
 	if (effectiveRadius <= 0) {
@@ -497,9 +510,22 @@ const resolvePrimitiveHeight = (primitive: LcedaSelectablePrimitive): number | u
 	return resolvePrimitiveWidth(primitive);
 };
 
+const resolvePrimitiveRotation = (primitive: LcedaSelectablePrimitive): number | undefined => {
+	if (typeof primitive.rotation === 'number' && Number.isFinite(primitive.rotation)) {
+		return normalizeRotationDegrees(primitive.rotation);
+	}
+
+	return undefined;
+};
+
+const normalizeRotationDegrees = (rotation: number): number => {
+	const normalizedRotation = rotation % 360;
+	return normalizedRotation >= 0 ? normalizedRotation : normalizedRotation + 360;
+};
+
 const resolvePadOutlineShape = (primitive: LcedaSelectablePrimitive): 'ellipse' | 'rect' => {
 	if (typeof primitive.padShape === 'string') {
-		return primitive.padShape.toUpperCase() === 'ELLIPSE' ? 'ellipse' : 'rect';
+		return ['ELLIPSE', 'ROUND', 'CIRCLE'].includes(primitive.padShape.toUpperCase()) ? 'ellipse' : 'rect';
 	}
 
 	return 'ellipse';
@@ -552,5 +578,5 @@ const toLayerOrder = (layerName: string): number | null => {
 		return null;
 	}
 
-	return Number.parseInt(innerLayerMatch[1], 10);
+	return toLcedaLayerId(`Inner${Number.parseInt(innerLayerMatch[1], 10)}`) === null ? null : Number.parseInt(innerLayerMatch[1], 10);
 };

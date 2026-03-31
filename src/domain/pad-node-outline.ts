@@ -4,113 +4,85 @@ import type { SkeletonPoint, SkeletonPolygon } from './skeleton-types';
 
 const FULL_TURN_RADIANS = Math.PI * 2;
 const ELLIPSE_SEGMENTS = 24;
+const DEGREES_TO_RADIANS = Math.PI / 180;
 
 export interface BuildPadNodeOutlineOptions {
 	cornerStyle?: SmartCopperPourCornerStyle;
 }
 
-export const buildPadNodeOutline = (node: PadNode, options: BuildPadNodeOutlineOptions = {}): SkeletonPolygon => {
+export const buildPadNodeOutline = (node: PadNode): SkeletonPolygon => {
 	const width = node.width ?? node.effectiveRadius * 2;
 	const height = node.height ?? node.effectiveRadius * 2;
+	const rotationRadians = toRotationRadians(node.rotation);
 
 	if (node.outlineShape === 'rect') {
-		return buildRectOutline(node.center, width, height, options.cornerStyle);
+		return {
+			vertices: createRightAngleRectVertices(node.center, width, height, rotationRadians),
+		};
 	}
 
 	return {
-		vertices: createEllipseVertices(node.center, width / 2, height / 2),
+		vertices: createEllipseVertices(node.center, width / 2, height / 2, rotationRadians),
 	};
 };
 
-const buildRectOutline = (
-	center: SkeletonPoint,
-	width: number,
-	height: number,
-	cornerStyle: SmartCopperPourCornerStyle | undefined,
-): SkeletonPolygon => {
-	const bevelRadius = Math.min(width, height) / 2;
-
-	switch (cornerStyle) {
-		case 'bevel45':
-			return {
-				vertices: createBeveledRectVertices(center, width, height, bevelRadius),
-			};
-		case 'round':
-			return {
-				vertices: createRoundedRectVertices(center, width, height, bevelRadius),
-			};
-		case 'rightAngle':
-		default:
-			return {
-				vertices: createRightAngleRectVertices(center, width, height),
-			};
-	}
+export const rotateLocalPointToBoard = (center: SkeletonPoint, point: SkeletonPoint, rotationDegrees = 0): SkeletonPoint => {
+	return rotateLocalPointToBoardRadians(center, point, toRotationRadians(rotationDegrees));
 };
 
-const createRightAngleRectVertices = (center: SkeletonPoint, width: number, height: number): SkeletonPoint[] => {
+export const projectBoardDirectionToNodeLocal = (direction: SkeletonPoint, rotationDegrees = 0): SkeletonPoint => {
+	const rotationRadians = toRotationRadians(rotationDegrees);
+	const cosRotation = Math.cos(rotationRadians);
+	const sinRotation = Math.sin(rotationRadians);
+	return {
+		x: direction.x * cosRotation + direction.y * sinRotation,
+		y: -direction.x * sinRotation + direction.y * cosRotation,
+	};
+};
+
+const createRightAngleRectVertices = (center: SkeletonPoint, width: number, height: number, rotationRadians: number): SkeletonPoint[] => {
 	const halfWidth = width / 2;
 	const halfHeight = height / 2;
 	return [
-		{ x: center.x - halfWidth, y: center.y - halfHeight },
-		{ x: center.x + halfWidth, y: center.y - halfHeight },
-		{ x: center.x + halfWidth, y: center.y + halfHeight },
-		{ x: center.x - halfWidth, y: center.y + halfHeight },
+		rotateLocalPointToBoardRadians(center, { x: -halfWidth, y: -halfHeight }, rotationRadians),
+		rotateLocalPointToBoardRadians(center, { x: halfWidth, y: -halfHeight }, rotationRadians),
+		rotateLocalPointToBoardRadians(center, { x: halfWidth, y: halfHeight }, rotationRadians),
+		rotateLocalPointToBoardRadians(center, { x: -halfWidth, y: halfHeight }, rotationRadians),
 	];
 };
 
-const createBeveledRectVertices = (center: SkeletonPoint, width: number, height: number, bevelRadius: number): SkeletonPoint[] => {
-	const halfWidth = width / 2;
-	const halfHeight = height / 2;
-	const inset = Math.min(bevelRadius, halfWidth, halfHeight);
-	return [
-		{ x: center.x - halfWidth + inset, y: center.y - halfHeight },
-		{ x: center.x + halfWidth - inset, y: center.y - halfHeight },
-		{ x: center.x + halfWidth, y: center.y - halfHeight + inset },
-		{ x: center.x + halfWidth, y: center.y + halfHeight - inset },
-		{ x: center.x + halfWidth - inset, y: center.y + halfHeight },
-		{ x: center.x - halfWidth + inset, y: center.y + halfHeight },
-		{ x: center.x - halfWidth, y: center.y + halfHeight - inset },
-		{ x: center.x - halfWidth, y: center.y - halfHeight + inset },
-	];
-};
-
-const createRoundedRectVertices = (center: SkeletonPoint, width: number, height: number, radius: number): SkeletonPoint[] => {
-	const halfWidth = width / 2;
-	const halfHeight = height / 2;
-	const clampedRadius = Math.min(radius, halfWidth, halfHeight);
-	const cornerCenters: ReadonlyArray<SkeletonPoint> = [
-		{ x: center.x + halfWidth - clampedRadius, y: center.y - halfHeight + clampedRadius },
-		{ x: center.x + halfWidth - clampedRadius, y: center.y + halfHeight - clampedRadius },
-		{ x: center.x - halfWidth + clampedRadius, y: center.y + halfHeight - clampedRadius },
-		{ x: center.x - halfWidth + clampedRadius, y: center.y - halfHeight + clampedRadius },
-	];
-	const startAngles = [-Math.PI / 2, 0, Math.PI / 2, Math.PI];
-	const vertices: SkeletonPoint[] = [];
-
-	for (let cornerIndex = 0; cornerIndex < cornerCenters.length; cornerIndex += 1) {
-		const cornerCenter = cornerCenters[cornerIndex];
-		const startAngle = startAngles[cornerIndex];
-		for (let stepIndex = 0; stepIndex < ELLIPSE_SEGMENTS / 4; stepIndex += 1) {
-			const angle = startAngle + (stepIndex / (ELLIPSE_SEGMENTS / 4 - 1)) * (Math.PI / 2);
-			vertices.push({
-				x: cornerCenter.x + Math.cos(angle) * clampedRadius,
-				y: cornerCenter.y + Math.sin(angle) * clampedRadius,
-			});
-		}
-	}
-
-	return vertices;
-};
-
-const createEllipseVertices = (center: SkeletonPoint, radiusX: number, radiusY: number): SkeletonPoint[] => {
+const createEllipseVertices = (center: SkeletonPoint, radiusX: number, radiusY: number, rotationRadians: number): SkeletonPoint[] => {
 	const vertices: SkeletonPoint[] = [];
 	for (let index = 0; index < ELLIPSE_SEGMENTS; index += 1) {
 		const angle = (index / ELLIPSE_SEGMENTS) * FULL_TURN_RADIANS;
 		vertices.push({
-			x: center.x + Math.cos(angle) * radiusX,
-			y: center.y + Math.sin(angle) * radiusY,
+			...rotateLocalPointToBoardRadians(center, { x: Math.cos(angle) * radiusX, y: Math.sin(angle) * radiusY }, rotationRadians),
 		});
 	}
 
 	return vertices;
+};
+
+const rotateLocalPointToBoardRadians = (center: SkeletonPoint, point: SkeletonPoint, rotationRadians: number): SkeletonPoint => {
+	if (rotationRadians === 0) {
+		return {
+			x: center.x + point.x,
+			y: center.y + point.y,
+		};
+	}
+
+	const cosRotation = Math.cos(rotationRadians);
+	const sinRotation = Math.sin(rotationRadians);
+	return {
+		x: center.x + point.x * cosRotation - point.y * sinRotation,
+		y: center.y + point.x * sinRotation + point.y * cosRotation,
+	};
+};
+
+const toRotationRadians = (rotationDegrees: number | undefined): number => {
+	if (rotationDegrees === undefined) {
+		return 0;
+	}
+
+	return rotationDegrees * DEGREES_TO_RADIANS;
 };

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'vitest';
 
 import { createLcedaSelectedPrimitivesReader, createSmartCopperPourSelectionInspector } from '../../../src/infrastructure/lceda/selection-inspector';
-import { createComponentSelection, createPadPrimitive } from './selection-fixtures';
+import { createComponentSelection, createPadPrimitive, createViaPrimitive } from './selection-fixtures';
 
 const edaGlobal = globalThis as typeof globalThis & {
 	eda?: {
@@ -27,9 +27,9 @@ const createSupportedViaPrimitive = () =>
 		getState_X: () => 10,
 		getState_Y: () => 20,
 		getState_Net: () => 'VCC',
-		getState_StartLayer: () => 1,
-		getState_EndLayer: () => 2,
 		getState_Diameter: () => 1.6,
+		getState_ViaType: () => 0,
+		getState_DesignRuleBlindViaName: () => null,
 	}) as unknown;
 
 const createUnsupportedViaPrimitive = () =>
@@ -38,8 +38,9 @@ const createUnsupportedViaPrimitive = () =>
 		getState_X: () => 10,
 		getState_Y: () => 20,
 		getState_Net: () => 'VCC',
-		getState_StartLayer: () => 1,
-		getState_EndLayer: () => undefined,
+		getState_Diameter: () => 1.6,
+		getState_ViaType: () => 1,
+		getState_DesignRuleBlindViaName: () => 'L1-L2 blind rule',
 	}) as unknown;
 
 const createInvalidCoordinateViaPrimitive = () =>
@@ -48,9 +49,9 @@ const createInvalidCoordinateViaPrimitive = () =>
 		getState_X: () => Number.NaN,
 		getState_Y: () => 20,
 		getState_Net: () => 'VCC',
-		getState_StartLayer: () => 1,
-		getState_EndLayer: () => 2,
 		getState_Diameter: () => 1.6,
+		getState_ViaType: () => 0,
+		getState_DesignRuleBlindViaName: () => null,
 	}) as unknown;
 
 const createMissingDiameterViaPrimitive = () =>
@@ -59,8 +60,8 @@ const createMissingDiameterViaPrimitive = () =>
 		getState_X: () => 10,
 		getState_Y: () => 20,
 		getState_Net: () => 'VCC',
-		getState_StartLayer: () => 1,
-		getState_EndLayer: () => 2,
+		getState_ViaType: () => 0,
+		getState_DesignRuleBlindViaName: () => null,
 	}) as unknown;
 
 const createInvalidCoordinatePadPrimitive = () =>
@@ -77,7 +78,7 @@ const createInvalidCoordinatePadPrimitive = () =>
 const createMethodCollisionPrimitive = () =>
 	({
 		...createBasePrimitive('collision-1'),
-		getState_StartLayer: () => 1,
+		getState_ViaTypeX: () => 0,
 	}) as unknown;
 
 const createOtherPrimitive = () => createBasePrimitive('track-1') as unknown;
@@ -262,6 +263,7 @@ describe('createSmartCopperPourSelectionInspector', () => {
 					layer: 'TopLayer',
 					net: 'VCC',
 					outlineShape: 'ellipse',
+					rotation: 0,
 					width: 6,
 				},
 				{
@@ -272,6 +274,7 @@ describe('createSmartCopperPourSelectionInspector', () => {
 					layer: 'TopLayer',
 					net: 'VCC',
 					outlineShape: 'ellipse',
+					rotation: 0,
 					width: 6,
 				},
 			]),
@@ -304,6 +307,7 @@ describe('createSmartCopperPourSelectionInspector', () => {
 					layer: 'TopLayer',
 					net: 'VCC',
 					outlineShape: 'ellipse',
+					rotation: 0,
 					width: 6,
 				},
 				{
@@ -314,7 +318,48 @@ describe('createSmartCopperPourSelectionInspector', () => {
 					layer: 'TopLayer',
 					net: 'VCC',
 					outlineShape: 'ellipse',
+					rotation: 0,
 					width: 6,
+				},
+			]),
+		});
+	});
+
+	test('includes component child vias in the normalized selection summary', async () => {
+		const inspector = createSmartCopperPourSelectionInspector({
+			readSelectedPrimitives: async () => [
+				createComponentSelection({
+					id: 'component-with-via-1',
+					children: [createPadPrimitive({ id: 'component-pad-1', x: 1, y: 2 }), createViaPrimitive({ id: 'component-via-1', x: 9, y: 10 })],
+				}) as unknown as never,
+			],
+		});
+
+		await expect(inspector.inspectSelection()).resolves.toEqual({
+			connectionCount: 2,
+			netName: 'VCC',
+			layerName: 'TopLayer',
+			selectionFingerprint: JSON.stringify([
+				{
+					center: { x: 1, y: 2 },
+					effectiveRadius: 3,
+					height: 4,
+					id: 'component-pad-1',
+					layer: 'TopLayer',
+					net: 'VCC',
+					outlineShape: 'ellipse',
+					rotation: 0,
+					width: 6,
+				},
+				{
+					center: { x: 9, y: 10 },
+					effectiveRadius: 0.8,
+					height: 1.6,
+					id: 'component-via-1',
+					layer: 'TopLayer',
+					net: 'VCC',
+					outlineShape: 'ellipse',
+					width: 1.6,
 				},
 			]),
 		});
@@ -331,6 +376,7 @@ describe('createSmartCopperPourSelectionInspector', () => {
 		});
 
 		await expect(inspector.inspectSelection()).rejects.toThrowError(/component-unsupported-1/);
+		await expect(inspector.inspectSelection()).rejects.toThrowError(/node-like children/);
 	});
 
 	test('maps supported via primitives to VIA with a readable layer span', async () => {
@@ -469,6 +515,7 @@ describe('createSmartCopperPourSelectionInspector', () => {
 				layer: 'TopLayer',
 				x: 12,
 				y: 34,
+				rotation: 0,
 				padShape: 'ELLIPSE',
 				width: 6,
 				height: 4,
