@@ -2,7 +2,7 @@
 	"name": "smart-copper-pour",
 	"uuid": "20f9219c73b94287b27419b9d3e21c4e",
 	"displayName": "一键智能铺铜",
-	"description": "选中焊盘快速生成多种拓扑结构的铜皮",
+	"description": "选中多个焊盘可一键使用各种拓扑方式生成规范的铺铜区域。",
 	"version": "1.0.0",
 	"publisher": "观象",
 	"engines": {
