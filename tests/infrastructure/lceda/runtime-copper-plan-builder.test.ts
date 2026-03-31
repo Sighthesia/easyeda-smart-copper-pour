@@ -463,6 +463,131 @@ describe('createRuntimeCopperPlanBuilder', () => {
 		}
 	});
 
+	test('interprets EasyEDA rotation units correctly in the logged four-pad daisy-chain scenario', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([
+				createPad({
+					id: 'pad-a',
+					net: 'GND',
+					x: 2710,
+					y: 1083.6,
+					padShape: 'RECT',
+					width: 31.5,
+					height: 35.4,
+					rotation: -5156.62015617741,
+					padRadius: 17.7,
+				}),
+				createPad({
+					id: 'pad-b',
+					net: 'GND',
+					x: 2770,
+					y: 1083.6,
+					padShape: 'RECT',
+					width: 31.5,
+					height: 35.4,
+					rotation: 5156.620156177409,
+					padRadius: 17.7,
+				}),
+				createPad({
+					id: 'pad-c',
+					net: 'GND',
+					x: 2870,
+					y: 949.7,
+					padShape: 'RECT',
+					width: 82.7,
+					height: 70.9,
+					rotation: -5156.620156177409,
+					padRadius: 41.35,
+				}),
+				createPad({
+					id: 'pad-d',
+					net: 'GND',
+					x: 3121.7,
+					y: 1104.1,
+					padShape: 'RECT',
+					width: 39.4,
+					height: 106.3,
+					rotation: 5156.620156177409,
+					padRadius: 53.15,
+				}),
+			]),
+		);
+
+		const result = await builder.buildWriterInput({
+			...createDaisyChainRequest(),
+			width: 0,
+		});
+
+		for (const corner of createPhysicalScenarioCornersFromLcedaRotationUnits()) {
+			expect(
+				isCoveredByAnyPolygon(corner.point, result.polygons),
+				`rotation-unit scenario missed ${corner.padId} corner ${JSON.stringify(corner.point)}`,
+			).toBe(true);
+		}
+	});
+
+	test('keeps right-angle node-size branches attached to pad-c without floating shoulder segments', async () => {
+		const builder = createRuntimeCopperPlanBuilder(
+			createReader([
+				createPad({
+					id: 'pad-d',
+					net: 'GND',
+					x: 3121.7,
+					y: 1104.1,
+					padShape: 'RECT',
+					width: 39.4,
+					height: 106.3,
+					rotation: 5156.620156177409,
+					padRadius: 53.15,
+				}),
+				createPad({
+					id: 'pad-c',
+					net: 'GND',
+					x: 2870,
+					y: 949.7,
+					padShape: 'RECT',
+					width: 82.7,
+					height: 70.9,
+					rotation: -5156.620156177409,
+					padRadius: 41.35,
+				}),
+				createPad({
+					id: 'pad-b',
+					net: 'GND',
+					x: 2770,
+					y: 1083.6,
+					padShape: 'RECT',
+					width: 31.5,
+					height: 35.4,
+					rotation: 5156.620156177409,
+					padRadius: 17.7,
+				}),
+				createPad({
+					id: 'pad-a',
+					net: 'GND',
+					x: 2710,
+					y: 1083.6,
+					padShape: 'RECT',
+					width: 31.5,
+					height: 35.4,
+					rotation: -5156.62015617741,
+					padRadius: 17.7,
+				}),
+			]),
+		);
+
+		const result = await builder.buildWriterInput({
+			...createDaisyChainRequest(),
+			cornerStyle: 'rightAngle',
+			width: 0,
+		});
+
+		expect(isCoveredByAnyPolygon({ x: 2825, y: 937.9 }, result.polygons)).toBe(false);
+		expect(isCoveredByAnyPolygon({ x: 2915, y: 937.9 }, result.polygons)).toBe(false);
+		expect(isCoveredByAnyPolygon({ x: 2870, y: 991.05 }, result.polygons)).toBe(true);
+		expect(isCoveredByAnyPolygon({ x: 2870, y: 1002.1 }, result.polygons)).toBe(true);
+	});
+
 	test('outputs selected pads, planning nodes, and generated copper area nodes with output prefix', async () => {
 		const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
 		const builder = createRuntimeCopperPlanBuilder(
@@ -549,6 +674,15 @@ const createPhysicalScenarioCorners = (): ReadonlyArray<{ padId: string; point: 
 		createRectCorners('pad-b', { x: 2770, y: 2770 }, 31.5, 35.4, 90),
 		createRectCorners('pad-c', { x: 2870, y: 949.7 }, 82.7, 70.9, 270),
 		createRectCorners('pad-d', { x: 3121.7, y: 1104.1 }, 39.4, 106.3, 90),
+	].flat();
+};
+
+const createPhysicalScenarioCornersFromLcedaRotationUnits = (): ReadonlyArray<{ padId: string; point: { x: number; y: number } }> => {
+	return [
+		createRectCorners('pad-a', { x: 2710, y: 1083.6 }, 31.5, 35.4, 90),
+		createRectCorners('pad-b', { x: 2770, y: 1083.6 }, 31.5, 35.4, 270),
+		createRectCorners('pad-c', { x: 2870, y: 949.7 }, 82.7, 70.9, 90),
+		createRectCorners('pad-d', { x: 3121.7, y: 1104.1 }, 39.4, 106.3, 270),
 	].flat();
 };
 

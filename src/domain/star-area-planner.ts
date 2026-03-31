@@ -19,7 +19,7 @@ export const planStarArea = (pads: ReadonlyArray<PadNode>, options: StarAreaPlan
 	const uniquePoints =
 		options.useNodeSizeAsBaseWidth === false
 			? dedupePoints(pads.map((pad) => pad.center))
-			: dedupePoints(pads.flatMap((pad) => buildPadNodeOutline(pad, { cornerStyle: options.nodeCornerStyle }).vertices));
+			: dedupePoints(pads.flatMap((pad) => buildPadNodeOutline(pad).vertices));
 	const areaShape = options.areaShape ?? 'convexHull';
 	const outline = areaShape === 'boundingBox' ? buildBoundingBox(uniquePoints) : buildConvexHull(uniquePoints);
 

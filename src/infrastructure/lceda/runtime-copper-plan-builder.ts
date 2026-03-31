@@ -1,6 +1,10 @@
 import type { SmartCopperPourPreviewRequest } from '../../application/smart-copper-pour-contract';
 import { resolveFinalCopperWidth } from '../../domain/copper-width';
 import { planDaisyChainBackbone } from '../../domain/daisy-chain-planner';
+import {
+	buildOrthogonalDaisyChainRightAngleNodeEnvelope,
+	shouldUseOrthogonalDaisyChainRightAngleNodeEnvelope,
+} from '../../domain/orthogonal-daisy-chain-envelope';
 import { planOrthogonalTreeBackbone } from '../../domain/orthogonal-tree-planner';
 import { buildPadNodeOutline, projectBoardDirectionToNodeLocal, rotateLocalPointToBoard } from '../../domain/pad-node-outline';
 import type { SkeletonPoint, SkeletonPolygon, SkeletonSegment } from '../../domain/skeleton-types';
@@ -77,6 +81,15 @@ const createOutputPayload = (
 	layerName,
 	layerId,
 	finalWidth,
+	parameters: {
+		width: request.width,
+		keepoutMargin: request.keepoutMargin,
+		cornerStyle: request.cornerStyle,
+		orthogonalRouting: request.orthogonalRouting ?? true,
+		useNodeSizeAsBaseWidth: request.useNodeSizeAsBaseWidth ?? true,
+		starAreaShape: request.starAreaShape ?? null,
+		trunkBias: request.trunkBias ?? null,
+	},
 	selectedPads: selectedPrimitives
 		.filter((primitive) => primitive.type === 'PAD')
 		.map((primitive) => ({
@@ -108,7 +121,7 @@ const createOutputPayload = (
 });
 
 const resolveSkeletonSegments = (
-	padNodes: ReturnType<typeof resolveSelectedPadNodes>,
+	padNodes: ReadonlyArray<ReturnType<typeof resolveSelectedPadNodes>[number]>,
 	request: SmartCopperPourPreviewRequest,
 ): ReadonlyArray<SkeletonSegment> => {
 	switch (request.topologyMode) {
@@ -149,7 +162,18 @@ const resolveCopperPolygons = (
 		});
 	}
 
-	const transitionGeometry = createPadTransitionGeometry(resolveSkeletonSegments(padNodes, request), padNodes, request, width);
+	if (shouldUseOrthogonalDaisyChainRightAngleNodeEnvelope(padNodes, request)) {
+		return buildOrthogonalDaisyChainRightAngleNodeEnvelope(padNodes, request, width, {
+			buildNodeCoveragePolygons,
+			projectNodeBoundaryPoint,
+			resolveNodeConnectionWidth,
+			resolveSkeletonSegments,
+			normalizeVector,
+		});
+	}
+
+	const skeletonSegments = resolveSkeletonSegments(padNodes, request);
+	const transitionGeometry = createPadTransitionGeometry(skeletonSegments, padNodes, request, width);
 	const segmentPolygons = buildSkeletonOffsetPolygons({
 		segments: transitionGeometry.segments,
 		width,
@@ -164,10 +188,10 @@ const resolveCopperPolygons = (
 	}
 
 	const nodeCoveragePolygons = buildNodeCoveragePolygons(padNodes, request);
-	const polygons = unionSkeletonPolygons([...segmentPolygons, ...transitionGeometry.transitionPolygons, ...nodeCoveragePolygons]);
+	const backbonePolygons = unionSkeletonPolygons([...segmentPolygons, ...transitionGeometry.transitionPolygons]);
 
 	const styledPolygons = buildCornerStyledUnionPolygons({
-		polygons,
+		polygons: backbonePolygons,
 		width,
 		cornerStyle: request.cornerStyle,
 	});
@@ -176,7 +200,7 @@ const resolveCopperPolygons = (
 };
 
 const buildNodeCoveragePolygons = (
-	padNodes: ReturnType<typeof resolveSelectedPadNodes>,
+	padNodes: ReadonlyArray<ReturnType<typeof resolveSelectedPadNodes>[number]>,
 	request: SmartCopperPourPreviewRequest,
 ): ReadonlyArray<SkeletonPolygon> => {
 	return padNodes.flatMap((padNode) => {
@@ -222,11 +246,11 @@ const createPadTransitionGeometry = (
 			start: preparedStart.segmentPoint,
 			end: preparedEnd.segmentPoint,
 		});
-		if (preparedStart.transitionPolygon !== undefined) {
-			transitionPolygons.push(preparedStart.transitionPolygon);
+		if (preparedStart.transitionPolygons !== undefined) {
+			transitionPolygons.push(...preparedStart.transitionPolygons);
 		}
-		if (preparedEnd.transitionPolygon !== undefined) {
-			transitionPolygons.push(preparedEnd.transitionPolygon);
+		if (preparedEnd.transitionPolygons !== undefined) {
+			transitionPolygons.push(...preparedEnd.transitionPolygons);
 		}
 	}
 
@@ -242,7 +266,7 @@ const prepareSegmentEndpointTransition = (
 	nodesByCenter: ReadonlyMap<string, ReturnType<typeof resolveSelectedPadNodes>[number]>,
 	request: SmartCopperPourPreviewRequest,
 	width: number,
-): { segmentPoint: SkeletonPoint; transitionPolygon?: SkeletonPolygon } => {
+): { segmentPoint: SkeletonPoint; transitionPolygons?: ReadonlyArray<SkeletonPolygon> } => {
 	const node = nodesByCenter.get(toPointKey(endpoint));
 	if (node === undefined) {
 		return { segmentPoint: endpoint };
@@ -271,7 +295,7 @@ const prepareSegmentEndpointTransition = (
 
 	return {
 		segmentPoint,
-		transitionPolygon: buildTransitionPolygon(connectionPoint, segmentPoint, localWidth, width, direction),
+		transitionPolygons: [buildTransitionPolygon(connectionPoint, segmentPoint, localWidth, width, direction)],
 	};
 };
 

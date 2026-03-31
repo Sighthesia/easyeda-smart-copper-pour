@@ -284,4 +284,14 @@ describe('resolveSelectedPadNodes', () => {
 		expect(padNodes[0]?.outlineShape).toBe('ellipse');
 		expect(padNodes[1]?.outlineShape).toBe('ellipse');
 	});
+
+	test('normalizes EasyEDA pad rotation values into degrees for rotated rectangles', () => {
+		const padNodes = resolveSelectedPadNodes([
+			createPad({ id: 'pad-a', padShape: 'RECT', width: 31.5, height: 35.4, padRadius: 17.7, rotation: -5156.62015617741 }),
+			createPad({ id: 'pad-b', x: 10, padShape: 'RECT', width: 31.5, height: 35.4, padRadius: 17.7, rotation: 5156.620156177409 }),
+		]);
+
+		expect(padNodes[0]?.rotation).toBeCloseTo(270, 6);
+		expect(padNodes[1]?.rotation).toBeCloseTo(90, 6);
+	});
 });

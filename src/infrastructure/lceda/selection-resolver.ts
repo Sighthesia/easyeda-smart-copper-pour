@@ -512,10 +512,19 @@ const resolvePrimitiveHeight = (primitive: LcedaSelectablePrimitive): number | u
 
 const resolvePrimitiveRotation = (primitive: LcedaSelectablePrimitive): number | undefined => {
 	if (typeof primitive.rotation === 'number' && Number.isFinite(primitive.rotation)) {
-		return normalizeRotationDegrees(primitive.rotation);
+		return normalizeRotationDegrees(normalizeLcedaRotationToDegrees(primitive.rotation));
 	}
 
 	return undefined;
+};
+
+const normalizeLcedaRotationToDegrees = (rotation: number): number => {
+	const absoluteRotation = Math.abs(rotation);
+	if (absoluteRotation > 360) {
+		return (rotation * Math.PI) / 180;
+	}
+
+	return rotation;
 };
 
 const normalizeRotationDegrees = (rotation: number): number => {
